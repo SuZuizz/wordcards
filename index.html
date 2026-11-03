@@ -88,6 +88,11 @@
   .warn span{flex:1}
   .warn button{all:unset;cursor:pointer;color:#a8834a;font-size:14px;flex:none;padding:0 2px;line-height:1}
   .warn button:hover{color:#e6c58c}
+  .warn .act{
+    all:unset;cursor:pointer;flex:none;padding:5px 11px;border-radius:8px;
+    background:#5eead4;color:#052e2b;font-size:12px;font-weight:700;line-height:1.4;
+  }
+  .warn .act:hover{background:#7df0dd;color:#052e2b}
 
   /* ---------- 卡片：单词 / 音标 / 释义 同页 ---------- */
   .stage{flex:1;display:flex;flex-direction:column;gap:14px;min-height:0}
@@ -119,7 +124,7 @@
     display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;
   }
   .head{display:flex;flex-direction:column;align-items:center;gap:9px;width:100%}
-  .sub{display:flex;align-items:center;justify-content:center;gap:12px;min-height:32px}
+  .card .sub{display:flex;align-items:center;justify-content:center;gap:12px;min-height:32px}
 
   .word{font-size:clamp(30px,7.2vw,48px);font-weight:750;letter-spacing:-.4px;line-height:1.2;word-break:break-word}
   .word .no{
@@ -351,6 +356,7 @@
 
   <div class="warn" id="warn" hidden>
     <span id="warnText"></span>
+    <button class="act" id="warnChrome" hidden>用 Chrome 打开</button>
     <button id="warnClose" title="关闭">✕</button>
   </div>
 
@@ -489,7 +495,7 @@
       进度保存在本机浏览器（localStorage），换设备 / 清缓存会丢。
     </p>
     <p class="tip" style="border-top:0;padding-top:0;margin-top:6px;color:#4d586b">
-      版本 v3 · 2026-11-03 · 词库 304 张
+      版本 v4 · 2026-11-03 · 词库 304 张
     </p>
     <div class="actions" style="margin-top:14px">
       <button class="btn primary wide" id="btnCloseSettings">完成</button>
@@ -1567,15 +1573,33 @@ window.DECKS.b1u1 = {
   }
 
   /* ------------- 没有声音时的提示 ------------- */
-  function showWarn(msg) {
+  function showWarn(msg, showChromeBtn) {
     if (!$('warn').hidden) return;
     $('warnText').textContent = msg;
+    $('warnChrome').hidden = !showChromeBtn;
     $('warn').hidden = false;
+  }
+
+  // 用 Android intent 直接跳到 Chrome
+  function openInChrome() {
+    var rest = location.host + location.pathname + location.search + location.hash;
+    var scheme = location.protocol.replace(':', '');
+    try {
+      location.href = 'intent://' + rest + '#Intent;scheme=' + scheme + ';package=com.android.chrome;end';
+    } catch (e) {
+      toast('请手动打开 Chrome，输入 ' + location.origin);
+      return;
+    }
+    setTimeout(function () {
+      if (!document.hidden) toast('没跳到 Chrome？请手动打开 Chrome 再访问这个网址');
+    }, 1600);
   }
 
   function checkVoice() {
     var ua = navigator.userAgent || '';
     var inWx = /MicroMessenger/i.test(ua);
+    var isEdgeA = /EdgA\//i.test(ua);            // Edge 安卓版：拿不到系统语音
+    var isAndroid = /Android/i.test(ua);
 
     if (inWx) {
       // 微信内置浏览器：直接弹窗说明，避免"没声音"的困惑
@@ -1583,17 +1607,27 @@ window.DECKS.b1u1 = {
     }
 
     if (!('speechSynthesis' in window)) {
-      showWarn(inWx
-        ? '微信内置浏览器不支持朗读。点右上角「⋯」→「在浏览器打开」，用 Chrome 打开就有声音。'
-        : '这个浏览器不支持语音朗读，建议用 Chrome / Edge 打开。');
+      if (inWx) {
+        showWarn('微信内置浏览器不支持朗读。点右上角「⋯」→「在浏览器打开」，用 Chrome 打开就有声音。');
+      } else if (isEdgeA) {
+        showWarn('安卓版 Edge 拿不到系统语音，所以没有声音（Edge 的已知问题）。点右边按钮用 Chrome 打开就有声音。', true);
+      } else {
+        showWarn('这个浏览器不支持语音朗读，建议用 Chrome 打开。');
+      }
       return;
     }
 
     setTimeout(function () {
       if (voices.length) return;
-      showWarn(inWx
-        ? '微信内置浏览器里读不出声。点右上角「⋯」→「在浏览器打开」再试一次。'
-        : '这台手机没有可用的语音引擎，所以没有声音。打开：设置 → 系统 → 语言和输入法 → 文字转语音（TTS），安装并选定一个引擎（如「Speech Services by Google」），再回到这里刷新。');
+      if (inWx) {
+        showWarn('微信内置浏览器里读不出声。点右上角「⋯」→「在浏览器打开」再试一次。');
+      } else if (isEdgeA) {
+        showWarn('安卓版 Edge 拿不到系统语音，所以没有声音（Edge 的已知问题）。点右边按钮用 Chrome 打开就有声音。', true);
+      } else if (isAndroid) {
+        showWarn('这台手机没有可用的语音引擎，所以没有声音。打开：设置 → 系统 → 语言和输入法 → 文字转语音（TTS），安装并选定一个引擎（如「Speech Services by Google」），再回到这里刷新。');
+      } else {
+        showWarn('当前浏览器没有可用的语音引擎，所以读不出声。建议用 Chrome / Edge 桌面版，或检查系统的「文字转语音」设置。');
+      }
     }, 1800);
   }
 
@@ -1736,6 +1770,7 @@ window.DECKS.b1u1 = {
 
     $('btnSettings').addEventListener('click', openSettings);
     $('warnClose').addEventListener('click', function () { $('warn').hidden = true; });
+    $('warnChrome').addEventListener('click', openInChrome);
     $('wxTipOk').addEventListener('click', function () { $('wxTip').hidden = true; });
     $('wxTip').addEventListener('click', function (e) {
       if (e.target === $('wxTip')) $('wxTip').hidden = true;
