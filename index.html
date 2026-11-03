@@ -81,6 +81,13 @@
     background:#3a1d1d;border:1px solid #7f1d1d;color:#fecaca;
     padding:12px 14px;border-radius:12px;font-size:13px;line-height:1.7;text-align:center;
   }
+  .warn{
+    display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:12px;
+    background:#2b2010;border:1px solid #6b4f16;color:#f3cd8b;font-size:12.5px;line-height:1.65;
+  }
+  .warn span{flex:1}
+  .warn button{all:unset;cursor:pointer;color:#a8834a;font-size:14px;flex:none;padding:0 2px;line-height:1}
+  .warn button:hover{color:#e6c58c}
 
   /* ---------- 卡片：单词 / 音标 / 释义 同页 ---------- */
   .stage{flex:1;display:flex;flex-direction:column;gap:14px;min-height:0}
@@ -342,6 +349,11 @@
 
   <div class="bar"><i id="progressBar"></i></div>
 
+  <div class="warn" id="warn" hidden>
+    <span id="warnText"></span>
+    <button id="warnClose" title="关闭">✕</button>
+  </div>
+
   <div class="auto-bar" id="autoBar" hidden>
     <div class="auto-row">
       <span class="pulse"></span>
@@ -476,8 +488,25 @@
       云端音色（名字带 Natural / Online）首句会慢 0.5–1 秒；想秒开就勾选上方「优先本地语音」。<br>
       进度保存在本机浏览器（localStorage），换设备 / 清缓存会丢。
     </p>
+    <p class="tip" style="border-top:0;padding-top:0;margin-top:6px;color:#4d586b">
+      版本 v3 · 2026-11-03 · 词库 304 张
+    </p>
     <div class="actions" style="margin-top:14px">
       <button class="btn primary wide" id="btnCloseSettings">完成</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="wxTip" hidden>
+  <div class="sheet" style="max-width:400px">
+    <h3>微信里没有声音</h3>
+    <p class="sub" style="margin:10px 0 16px;line-height:1.8">
+      微信内置浏览器没有语音合成功能，所以这个页面在微信里读不出声，不是文件坏了。<br><br>
+      点右上角 <b style="color:#5eead4">⋯</b> → <b style="color:#5eead4">在浏览器打开</b>，
+      用 Chrome / 系统浏览器打开就有声音了。
+    </p>
+    <div class="actions" style="margin-top:0">
+      <button class="btn primary wide" id="wxTipOk">知道了，先看没声音的</button>
     </div>
   </div>
 </div>
@@ -1537,6 +1566,37 @@ window.DECKS.b1u1 = {
     toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2200);
   }
 
+  /* ------------- 没有声音时的提示 ------------- */
+  function showWarn(msg) {
+    if (!$('warn').hidden) return;
+    $('warnText').textContent = msg;
+    $('warn').hidden = false;
+  }
+
+  function checkVoice() {
+    var ua = navigator.userAgent || '';
+    var inWx = /MicroMessenger/i.test(ua);
+
+    if (inWx) {
+      // 微信内置浏览器：直接弹窗说明，避免"没声音"的困惑
+      setTimeout(function () { $('wxTip').hidden = false; }, 500);
+    }
+
+    if (!('speechSynthesis' in window)) {
+      showWarn(inWx
+        ? '微信内置浏览器不支持朗读。点右上角「⋯」→「在浏览器打开」，用 Chrome 打开就有声音。'
+        : '这个浏览器不支持语音朗读，建议用 Chrome / Edge 打开。');
+      return;
+    }
+
+    setTimeout(function () {
+      if (voices.length) return;
+      showWarn(inWx
+        ? '微信内置浏览器里读不出声。点右上角「⋯」→「在浏览器打开」再试一次。'
+        : '这台手机没有可用的语音引擎，所以没有声音。打开：设置 → 系统 → 语言和输入法 → 文字转语音（TTS），安装并选定一个引擎（如「Speech Services by Google」），再回到这里刷新。');
+    }, 1800);
+  }
+
   /* ------------- 确认对话框（不依赖浏览器 confirm） ------------- */
   var askCb = null;
   function ask(msg, onOk) {
@@ -1675,6 +1735,11 @@ window.DECKS.b1u1 = {
     $('btnAll').addEventListener('click', function () { startRound(true); });
 
     $('btnSettings').addEventListener('click', openSettings);
+    $('warnClose').addEventListener('click', function () { $('warn').hidden = true; });
+    $('wxTipOk').addEventListener('click', function () { $('wxTip').hidden = true; });
+    $('wxTip').addEventListener('click', function (e) {
+      if (e.target === $('wxTip')) $('wxTip').hidden = true;
+    });
     $('btnToc').addEventListener('click', openToc);
     $('tocClose').addEventListener('click', closeToc);
     $('tocSearch').addEventListener('input', renderToc);
@@ -1848,6 +1913,7 @@ window.DECKS.b1u1 = {
   load();
   bind();
   refreshVoices();
+  checkVoice();
   syncDeckName();
   syncPlayUI();
   startRound(false);
