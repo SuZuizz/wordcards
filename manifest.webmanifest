@@ -1,0 +1,17 @@
+{
+  "name": "单词闪卡 · 必修一 Unit 1",
+  "short_name": "单词闪卡",
+  "description": "带朗读、自动播放和间隔重复的单词闪卡",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d1017",
+  "theme_color": "#0d1017",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

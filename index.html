@@ -1,0 +1,1681 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0d1017" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="单词闪卡" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%230d1017'/%3E%3Crect x='9' y='8' width='38' height='48' rx='9' fill='%23182231' stroke='%235eead4' stroke-width='3'/%3E%3Ctext x='28' y='42' font-size='26' font-family='system-ui,sans-serif' font-weight='700' text-anchor='middle' fill='%235eead4'%3E%E8%AF%8D%3C/text%3E%3Crect x='38' y='38' width='18' height='18' rx='9' fill='%235eead4'/%3E%3C/svg%3E" />
+<title>单词闪卡 · 朗读版</title>
+<style>
+  :root{
+    --bg:#0d1017; --panel:#141a24; --line:#232c3b;
+    --fg:#e9eef8; --muted:#8b97ab;
+    --accent:#5eead4; --accent2:#60a5fa;
+    --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
+    --r:20px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  [hidden]{display:none !important}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:radial-gradient(1100px 620px at 50% -12%, #1b2536 0%, var(--bg) 58%) fixed;
+    color:var(--fg);
+    font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    padding:max(14px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom));
+    min-height:100%;
+  }
+  .app{width:100%;max-width:680px;display:flex;flex-direction:column;gap:12px;flex:1}
+
+  /* ---------- 顶栏 ---------- */
+  .top{display:flex;align-items:center;gap:10px}
+  .brand{font-size:15px;font-weight:700;letter-spacing:.3px;white-space:nowrap}
+  .meter{margin-left:auto;font-size:12.5px;color:var(--muted);white-space:nowrap}
+  .meter b{color:var(--fg);font-weight:600}
+  .ghost{
+    all:unset;cursor:pointer;width:34px;height:34px;border-radius:10px;
+    display:grid;place-items:center;font-size:16px;
+    background:var(--panel);border:1px solid var(--line);color:var(--muted);
+    transition:.18s;
+  }
+  .ghost:hover{color:var(--fg);border-color:#33405a}
+  .ghost:active{transform:scale(.94)}
+  .ghost.tiny{width:26px;height:26px;font-size:12px;border-radius:8px}
+
+  /* ---------- 自动播放条 ---------- */
+  .auto-bar{
+    display:flex;flex-direction:column;gap:9px;padding:9px 12px;border-radius:14px;
+    background:#10201e;border:1px solid #1f4a44;font-size:12.5px;color:#8fe3d5;
+  }
+  .auto-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .auto-title{white-space:nowrap}
+  .spacer{flex:1}
+  .auto-bar .pulse{
+    width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;
+    animation:pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.75)}}
+  .seg{display:inline-flex;border:1px solid #24544c;border-radius:99px;overflow:hidden;flex:none}
+  .seg button{
+    all:unset;cursor:pointer;padding:3px 10px;font-size:11.5px;line-height:1.5;
+    color:#7fb8ad;border-left:1px solid #24544c;transition:.15s;white-space:nowrap;
+  }
+  .seg button:first-child{border-left:0}
+  .seg button:hover{color:#bff3ea}
+  .seg button.on{background:#1f6f63;color:#eafffb}
+  .auto-bar input[type="range"]{flex:1;min-width:70px;max-width:none;height:18px;padding:0;accent-color:#5eead4}
+  .auto-bar .lbl{font-size:11.5px;color:#6ea79c;white-space:nowrap}
+  .auto-val{font-variant-numeric:tabular-nums;min-width:38px;text-align:right;color:#6ee7b7}
+
+  /* ---------- 进度条 ---------- */
+  .bar{height:4px;border-radius:99px;background:#1b2230;overflow:hidden}
+  .bar > i{display:block;height:100%;width:0;border-radius:99px;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .35s ease}
+
+  .nojs{
+    background:#3a1d1d;border:1px solid #7f1d1d;color:#fecaca;
+    padding:12px 14px;border-radius:12px;font-size:13px;line-height:1.7;text-align:center;
+  }
+
+  /* ---------- 卡片：单词 / 音标 / 释义 同页 ---------- */
+  .stage{flex:1;display:flex;flex-direction:column;gap:14px;min-height:0}
+  .card-wrap{flex:1;display:flex;align-items:stretch;justify-content:center;min-height:0}
+  .card{
+    position:relative;width:100%;max-height:100%;
+    min-height:clamp(280px,40vh,360px);
+    display:flex;flex-direction:column;cursor:pointer;
+    border-radius:var(--r);border:1px solid var(--line);
+    background:linear-gradient(160deg,#181f2b 0%,#121722 100%);
+    box-shadow:0 18px 50px -22px #000, inset 0 1px 0 #ffffff0d;
+    padding:26px 26px 16px;overflow:hidden;
+  }
+  .card::after{
+    content:"";position:absolute;inset:0;border-radius:var(--r);pointer-events:none;
+    background:radial-gradient(420px 200px at 18% 0%, #5eead414 0%, transparent 70%);
+  }
+  .scroll{
+    position:relative;z-index:1;flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+    display:flex;flex-direction:column;padding:2px;
+    scrollbar-width:thin;scrollbar-color:#2a3547 transparent;
+  }
+  .scroll::-webkit-scrollbar{width:6px}
+  .scroll::-webkit-scrollbar-thumb{background:#2a3547;border-radius:99px}
+
+  /* 内容整体居中：短的时候垂直居中，长了就贴顶滚动（auto 外边距实现，不会裁切） */
+  .content{
+    margin:auto 0;width:100%;padding:8px 2px;
+    display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;
+  }
+  .head{display:flex;flex-direction:column;align-items:center;gap:9px;width:100%}
+  .sub{display:flex;align-items:center;justify-content:center;gap:12px;min-height:32px}
+
+  .word{font-size:clamp(30px,7.2vw,48px);font-weight:750;letter-spacing:-.4px;line-height:1.2;word-break:break-word}
+  .word .no{
+    font-size:.5em;font-weight:600;color:var(--muted);letter-spacing:0;
+    margin-right:.3em;vertical-align:.45em;
+  }
+  .phonetic{color:var(--muted);font-size:15.5px;word-break:break-word}
+  .pos-tag{
+    font-size:12.5px;color:var(--accent);border:1px solid #5eead440;
+    background:#5eead412;padding:2px 10px;border-radius:99px;
+  }
+  .meaning{font-size:clamp(19px,4.8vw,24px);font-weight:500;line-height:1.75;width:100%;max-width:30em}
+  .example{
+    font-size:15.5px;line-height:1.8;color:#c3cddd;width:100%;max-width:32em;text-align:left;
+    min-height:62px;display:flex;align-items:center;
+    padding:16px 18px;border-radius:14px;
+    background:#0e131c;border:1px solid #1e2636;
+  }
+
+  .speak{
+    all:unset;cursor:pointer;flex:none;width:32px;height:32px;border-radius:50%;
+    display:grid;place-items:center;font-size:14px;
+    color:#052e2b;background:linear-gradient(180deg,#7df0dd,#4fd8c4);
+    box-shadow:0 8px 22px -10px #5eead4aa;transition:.15s;
+  }
+  .speak:hover{filter:brightness(1.06)}
+  .speak:active{transform:scale(.94)}
+
+  .hint{
+    margin-top:8px;padding-top:10px;border-top:1px solid #1a2230;
+    font-size:11.5px;color:#5f6b7f;letter-spacing:.3px;position:relative;z-index:1;
+  }
+  .hint kbd{
+    font-family:inherit;background:#1b2230;border:1px solid #2a3547;border-bottom-width:2px;
+    border-radius:5px;padding:1px 5px;font-size:10.5px;color:#9aa7bd;
+  }
+  .mini{
+    all:unset;cursor:pointer;display:inline-block;margin-right:10px;
+    padding:3px 9px;border-radius:99px;font-size:11.5px;
+    color:#9fd8cd;background:#16241f;border:1px solid #25463f;
+  }
+  .mini:hover{border-color:#3a6a5f}
+
+  /* ---------- 翻页 ---------- */
+  .pager{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:2px}
+  .pg{
+    all:unset;cursor:pointer;width:46px;height:36px;border-radius:11px;
+    display:grid;place-items:center;font-size:20px;line-height:1;
+    background:var(--panel);border:1px solid var(--line);color:var(--muted);transition:.15s;
+  }
+  .pg:hover:not(:disabled){color:var(--fg);border-color:#33405a}
+  .pg:active:not(:disabled){transform:scale(.95)}
+  .pg:disabled{opacity:.3;cursor:not-allowed}
+  .pg-mid{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+  #jumpNo{
+    width:58px;text-align:center;font:inherit;font-size:13.5px;padding:6px 4px;
+    background:#0d131c;border:1px solid var(--line);border-radius:9px;color:var(--fg);
+    outline:none;-moz-appearance:textfield;
+  }
+  #jumpNo::-webkit-outer-spin-button,#jumpNo::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  #jumpNo:focus{border-color:#3a4a66}
+  .pg-total b{color:var(--fg);font-weight:600}
+
+  /* ---------- 评分按钮 ---------- */
+  .controls{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+  .grade{
+    all:unset;cursor:pointer;text-align:center;padding:14px 8px;border-radius:14px;
+    border:1px solid var(--line);background:var(--panel);font-size:14.5px;font-weight:600;
+    transition:.16s;position:relative;
+  }
+  .grade small{display:block;font-size:11px;font-weight:500;color:var(--muted);margin-top:3px}
+  .grade:disabled{opacity:.35;cursor:not-allowed}
+  .grade[data-grade="1"]:not(:disabled):hover{border-color:#f8717166;background:#f8717112;color:#fca5a5}
+  .grade[data-grade="2"]:not(:disabled):hover{border-color:#fbbf2466;background:#fbbf2412;color:#fcd34d}
+  .grade[data-grade="3"]:not(:disabled):hover{border-color:#34d39966;background:#34d39912;color:#6ee7b7}
+  .grade:not(:disabled):active{transform:scale(.97)}
+  .grade .k{position:absolute;top:6px;right:8px;font-size:9.5px;color:#4d586b;font-weight:500}
+
+  /* ---------- 完成态 ---------- */
+  .done{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+    border:1px dashed var(--line);border-radius:var(--r);padding:38px 22px;text-align:center;
+    background:#111722;
+  }
+  .done .emoji{font-size:40px;line-height:1}
+  .done h2{margin:6px 0 0;font-size:19px}
+  .done p{margin:0;color:var(--muted);font-size:13.5px}
+  .done-btns{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;justify-content:center}
+  .btn{
+    all:unset;cursor:pointer;padding:10px 18px;border-radius:11px;font-size:14px;font-weight:600;
+    background:var(--panel);border:1px solid var(--line);transition:.15s;
+  }
+  .btn:hover{border-color:#3a4a66}
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:linear-gradient(180deg,#7df0dd,#4fd8c4);color:#052e2b;border-color:transparent}
+  .btn.danger{color:#fca5a5;border-color:#7f1d1d55}
+  .btn.wide{display:block;text-align:center;width:100%}
+
+  /* ---------- 设置面板 ---------- */
+  .overlay{
+    position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
+    padding:16px;background:#05070bcc;backdrop-filter:blur(6px);
+  }
+  .sheet{
+    width:100%;max-width:470px;max-height:88vh;overflow-y:auto;
+    background:#131924;border:1px solid var(--line);border-radius:20px;
+    padding:20px;box-shadow:0 30px 80px -30px #000;
+  }
+  .sheet h3{margin:0 0 4px;font-size:16px}
+  .sheet .sub{margin:0 0 18px;font-size:12.5px;color:var(--muted);line-height:1.6}
+  .row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #1c2431}
+  .row:last-of-type{border-bottom:0}
+  .row label{font-size:14px;flex:1}
+  .row .val{font-size:12.5px;color:var(--accent);font-variant-numeric:tabular-nums;min-width:32px;text-align:right}
+  select,input[type="range"],textarea{
+    font:inherit;color:var(--fg);background:#0d131c;border:1px solid var(--line);
+    border-radius:10px;padding:8px 10px;outline:none;width:100%;max-width:250px;
+  }
+  select:focus,textarea:focus{border-color:#3a4a66}
+  input[type="range"]{padding:0;height:24px;accent-color:#5eead4;background:transparent;border:0;max-width:170px}
+  .switch{position:relative;width:44px;height:25px;flex:none;cursor:pointer}
+  .switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+  .switch i{
+    position:absolute;inset:0;border-radius:99px;background:#2a3446;transition:.2s;
+  }
+  .switch i::after{
+    content:"";position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;
+    background:#8b97ab;transition:.2s;
+  }
+  .switch input:checked + i{background:#1f6f63}
+  .switch input:checked + i::after{transform:translateX(19px);background:var(--accent)}
+  textarea{max-width:none;width:100%;min-height:96px;resize:vertical;font-size:13px;line-height:1.6;
+    font-family:ui-monospace,Consolas,monospace}
+  .field{display:flex;flex-direction:column;gap:7px;margin:14px 0 0}
+  .field > span{font-size:12.5px;color:var(--muted)}
+  .sheet .actions{display:flex;gap:9px;margin-top:18px;flex-wrap:wrap}
+  .sheet .actions .btn{flex:1;text-align:center;min-width:110px}
+  .tip{font-size:11.5px;color:#66738a;line-height:1.7;margin:14px 0 0;
+    border-top:1px solid #1c2431;padding-top:12px}
+
+  /* ---------- toast ---------- */
+  .toast{
+    position:fixed;left:50%;bottom:96px;transform:translate(-50%,14px);
+    background:#1c2534;border:1px solid var(--line);color:var(--fg);
+    padding:10px 18px;border-radius:99px;font-size:13.5px;opacity:0;pointer-events:none;
+    transition:.25s;z-index:99;max-width:88vw;text-align:center;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+
+  @media (max-width:400px){
+    .brand{font-size:14px}
+    .grade{padding:12px 6px;font-size:13.5px}
+  }
+  @media (max-width:390px){
+    .meter{display:none}
+  }
+</style>
+<link rel="manifest" href="manifest.webmanifest" />
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">🔊 <span id="deckName">单词闪卡</span></div>
+    <div class="meter"><b id="leftCount">0</b> 张待学 · 今日 <b id="doneCount">0</b></div>
+    <button class="ghost" id="btnPlay" aria-label="自动播放" title="自动播放（P）">▶</button>
+    <button class="ghost" id="btnSettings" aria-label="设置" title="设置">⚙</button>
+  </header>
+
+  <noscript>
+    <div class="nojs">
+      这个页面没有执行 JavaScript，所以卡片是空的。<br>
+      请用 Chrome / Edge 直接双击打开这个 html 文件，不要放在预览窗口里看。
+    </div>
+  </noscript>
+
+  <div class="bar"><i id="progressBar"></i></div>
+
+  <div class="auto-bar" id="autoBar" hidden>
+    <div class="auto-row">
+      <span class="pulse"></span>
+      <span class="auto-title">自动播放</span>
+      <span class="spacer"></span>
+      <button class="ghost tiny" id="autoStop" title="停止">⏹</button>
+    </div>
+    <div class="auto-row">
+      <span class="seg" title="每个单词读几遍">
+        <button data-repeat="1">1遍</button>
+        <button data-repeat="2">2遍</button>
+        <button data-repeat="3">3遍</button>
+      </span>
+      <span class="seg" title="播放范围">
+        <button data-scope="round">本轮</button>
+        <button data-scope="all">全部</button>
+      </span>
+      <span class="lbl" title="两遍朗读之间的间隔">重复</span>
+      <input type="range" id="repGap" min="0.1" max="3" step="0.1" value="0.3" aria-label="重复间隔" />
+      <span class="auto-val" id="repGapVal">0.3s</span>
+    </div>
+    <div class="auto-row">
+      <span class="lbl" title="读完到下一张的停顿">停顿</span>
+      <input type="range" id="autoGap" min="0.2" max="3" step="0.1" value="1.2" aria-label="卡片间隔" />
+      <span class="auto-val" id="autoGapVal">1.2s</span>
+    </div>
+  </div>
+
+  <main class="stage">
+    <div class="card-wrap" id="cardWrap">
+      <div class="card" id="card">
+        <div class="scroll" id="cardBody">
+          <div class="content">
+            <div class="head">
+              <div class="word" id="word">—</div>
+              <div class="sub">
+                <span class="phonetic" id="phonetic" hidden></span>
+                <button class="speak" id="speakWord" title="朗读单词">🔊</button>
+              </div>
+            </div>
+            <div class="pos-tag" id="posTag" hidden></div>
+            <div class="meaning" id="meaning"></div>
+            <div class="example" id="example" hidden></div>
+          </div>
+        </div>
+        <div class="hint">
+          <button class="mini" id="speakEx" hidden>🗣 读例句</button>
+          <kbd>←</kbd><kbd>→</kbd> 翻页 · <kbd>空格</kbd> 重读 · <kbd>1</kbd> 不认识 · <kbd>2</kbd> 模糊 · <kbd>3</kbd> 认识 · <kbd>P</kbd> 自动播放
+        </div>
+      </div>
+    </div>
+
+    <div class="done" id="donePanel" hidden>
+      <div class="emoji">🎉</div>
+      <h2 id="doneTitle">本轮完成</h2>
+      <p id="doneText"></p>
+      <p id="nextDue"></p>
+      <div class="done-btns">
+        <button class="btn primary" id="btnAgain">再来一轮</button>
+        <button class="btn" id="btnAll">全部重刷</button>
+      </div>
+    </div>
+
+    <div class="pager" id="pager">
+      <button class="pg" id="btnPrev" title="上一张（←）">‹</button>
+      <span class="pg-mid">
+        <input type="number" id="jumpNo" min="1" value="1" inputmode="numeric" aria-label="跳到第几张" />
+        <span class="pg-total">/ <b id="pgTotal">0</b></span>
+      </span>
+      <button class="pg" id="btnNext" title="下一张（→）">›</button>
+    </div>
+
+    <div class="controls" id="controls">
+      <button class="grade" data-grade="1" disabled><span class="k">1</span>不认识<small>重新排队</small></button>
+      <button class="grade" data-grade="2" disabled><span class="k">2</span>模糊<small>明天再见</small></button>
+      <button class="grade" data-grade="3" disabled><span class="k">3</span>认识<small>拉长间隔</small></button>
+    </div>
+  </main>
+</div>
+
+<!-- 设置 -->
+<div class="overlay" id="settings" hidden>
+  <div class="sheet">
+    <h3>设置</h3>
+    <p class="sub">语音来自系统 / 浏览器自带的 TTS，不联网也能用（Edge 的 Natural 语音最好听）。</p>
+
+    <div class="row">
+      <label for="deckSel">词库</label>
+      <select id="deckSel" style="max-width:230px"></select>
+    </div>
+    <div class="row">
+      <label for="voiceSel">朗读语音</label>
+      <select id="voiceSel" style="max-width:230px"></select>
+    </div>
+    <div class="row">
+      <label for="rate">语速</label>
+      <input type="range" id="rate" min="0.5" max="1.3" step="0.05" />
+      <span class="val" id="rateVal">0.85×</span>
+    </div>
+    <div class="row">
+      <label for="autoWord">显示新卡时自动读单词</label>
+      <span class="switch"><input type="checkbox" id="autoWord" /><i></i></span>
+    </div>
+    <div class="row">
+      <label for="tone">两遍用不同语调（第 1 遍升、第 2 遍降）</label>
+      <span class="switch"><input type="checkbox" id="tone" /><i></i></span>
+    </div>
+    <div class="row">
+      <label for="preferLocal">优先本地语音（开口更快，音色普通）</label>
+      <span class="switch"><input type="checkbox" id="preferLocal" /><i></i></span>
+    </div>
+    <div class="row" style="border-bottom:0">
+      <label>试听</label>
+      <button class="btn" id="btnTestVoice" style="padding:7px 14px">🔊 试一下</button>
+    </div>
+
+    <div class="field">
+      <span>导入自己的词库（每行一个：单词 | 音标 | 词性+释义 | 例句，后三项可省略）</span>
+      <textarea id="importText" placeholder="abandon | /əˈbændən/ | v. 放弃；抛弃 | They had to abandon the plan.&#10;brilliant | /ˈbrɪliənt/ | adj. 杰出的；聪明的"></textarea>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="btnImport">导入词库</button>
+      <button class="btn" id="btnRestore">切换默认词库</button>
+    </div>
+    <div class="actions">
+      <button class="btn danger wide" id="btnResetProgress">清空学习进度</button>
+    </div>
+
+    <p class="tip">
+      快捷键：空格 / Enter 重读单词 · 1 / 2 / 3 评分 · R 重读 · P 自动播放 · Esc 停止 / 关闭设置。<br>
+      自动播放：「遍数」读 1–3 遍，「重复」是两遍之间的间隔，「停顿」是读完到下一张的间隔；范围可选「本轮」或「全部词库」。<br>
+      云端音色（名字带 Natural / Online）首句会慢 0.5–1 秒；想秒开就勾选上方「优先本地语音」。<br>
+      进度保存在本机浏览器（localStorage），换设备 / 清缓存会丢。
+    </p>
+    <div class="actions" style="margin-top:14px">
+      <button class="btn primary wide" id="btnCloseSettings">完成</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ask" hidden>
+  <div class="sheet" style="max-width:360px">
+    <h3>确认一下</h3>
+    <p class="sub" id="askMsg" style="margin:8px 0 18px"></p>
+    <div class="actions" style="margin-top:0">
+      <button class="btn" id="askCancel">取消</button>
+      <button class="btn primary" id="askOk">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* 自动生成：人教版必修一 Unit 1 词表 → 闪卡数据 */
+window.DECKS = window.DECKS || {};
+window.DECKS.b1u1 = {
+  name: "必修一 Unit 1",
+  cards: [
+    {"w": "potential", "p": "/pəˈtenʃl/", "pos": "n.", "cn": "潜力；可能性 adj. 潜在的，可能的", "no": 1},
+    {"w": "have the potential to do...", "p": "", "pos": "", "cn": "有做某事的潜力/可能性"},
+    {"w": "potentially", "p": "/pəˈtenʃəli/", "pos": "adv.", "cn": "潜在地，可能地"},
+    {"w": "senior", "p": "/ˈsi:niə(r)/", "pos": "adj.", "cn": "中学的(招收11或13岁以上学生)；级别高的；高级水平的；老年的 n. 级别(或地位)较高者；较…年长的人；高水平运动员", "no": 2},
+    {"w": "be senior to sb", "p": "", "pos": "", "cn": "比某人的地位/职位高"},
+    {"w": "be senior to sb by + 年龄", "p": "", "pos": "", "cn": "比某人年长…（= be + 年龄 senior to sb）"},
+    {"w": "senior high school (students)", "p": "", "pos": "", "cn": "高中(生)"},
+    {"w": "junior high/ middle school (students)", "p": "", "pos": "", "cn": "初中(生)"},
+    {"w": "primary school (students)", "p": "", "pos": "", "cn": "小学(小学生=pupils )"},
+    {"w": "path", "p": "/pɑ:θ/", "pos": "n.", "cn": "道路；小路；成功的途径", "no": 3},
+    {"w": "challenge", "p": "/ˈtʃælɪndʒ/", "pos": "n. & vt.", "cn": "挑战；质疑", "no": 4},
+    {"w": "challenge sb to sth / to do sth", "p": "", "pos": "", "cn": "向某人挑战(做)某事"},
+    {"w": "challenger", "p": "/ˈtʃælɪndʒə(r)/", "pos": "n.", "cn": "挑战者"},
+    {"w": "challenging", "p": "/ˈtʃælɪndʒɪŋ/", "pos": "adj.", "cn": "具有挑战性的"},
+    {"w": "It is a challenge / challenging for sb to do sth", "p": "", "pos": "", "cn": "对于某人来说做某事是一种挑战/具有挑战性的"},
+    {"w": "thinking", "p": "/ˈθɪŋkɪŋ/", "pos": "n.", "cn": "思维，思想；想法 adj. 思想的，有理智的，有思考力的", "no": 5},
+    {"w": "unthinkingly", "p": "/ʌnˈθɪŋkɪŋli/", "pos": "adv.", "cn": "不假思索地；轻率地"},
+    {"w": "think", "p": "/θɪŋk/", "pos": "vt. & vi.", "cn": "(thought, thought, thinking) 认为，觉得；想，思索/考，考虑；想出；想起"},
+    {"w": "thinker", "p": "/ˈθɪŋkə(r)/", "pos": "n.", "cn": "思想家；思想者"},
+    {"w": "thought", "p": "/θɔːt/", "pos": "n.", "cn": "思维，思考，思想；想法；思潮；心思，思想(thoughts)"},
+    {"w": "thoughtful", "p": "/ˈθɔːtfl/", "pos": "adj.", "cn": "沉思的，思考的；深思熟虑的；考虑周到的"},
+    {"w": "thoughtfully", "p": "/ˈθɔːtfəli/", "pos": "adv.", "cn": "沉思地；体贴地，亲切地"},
+    {"w": "thoughtless", "p": "/ˈθɔːtləs/", "pos": "adj.", "cn": "轻率的；考虑不周的；不顾及他人的"},
+    {"w": "thoughtlessly", "p": "/ˈθɔːtləsli/", "pos": "adv.", "cn": "轻率地，草率地"},
+    {"w": "think of...", "p": "", "pos": "", "cn": "记起…，想起…"},
+    {"w": "think of... as ...", "p": "", "pos": "", "cn": "把… 当作…，认为… 是…"},
+    {"w": "think about...", "p": "", "pos": "", "cn": "考虑…，思考…，思索…"},
+    {"w": "think over... / think... over", "p": "", "pos": "", "cn": "仔细考虑…"},
+    {"w": "think out... / think... out", "p": "", "pos": "", "cn": "解决…；仔细考虑…；发现…"},
+    {"w": "think up...", "p": "", "pos": "", "cn": "想出…；发明…"},
+    {"w": "think through...", "p": "", "pos": "", "cn": "彻底地想清楚…，想透；充分考虑，全盘考虑"},
+    {"w": "think highly/much of...", "p": "", "pos": "", "cn": "高度评价…"},
+    {"w": "think tank", "p": "", "pos": "", "cn": "智囊团"},
+    {"w": "think twice", "p": "", "pos": "", "cn": "再三考虑"},
+    {"w": "positive", "p": "/ˈpɒzətɪv/", "pos": "adj.", "cn": "积极乐观的；良好的，正面的", "no": 6},
+    {"w": "positively", "p": "/ˈpɒzətɪvli/", "pos": "adv.", "cn": "积极乐观地，乐观地"},
+    {"w": "positivity", "p": "/ˌpɒzɪˈtɪvɪti/", "pos": "n.", "cn": "积极性；阳性"},
+    {"w": "opportunity", "p": "/ˌɒpəˈtjuːnəti/", "pos": "n.", "cn": "机会，时机", "no": 7},
+    {"w": "have the opportunity to do sth", "p": "", "pos": "", "cn": "有机会做某事"},
+    {"w": "lie in ...", "p": "", "pos": "", "cn": "存在于…，在于… ；位于…", "no": 8},
+    {"w": "be located in...", "p": "", "pos": "", "cn": "位于…；坐落于…"},
+    {"w": "lie", "p": "/laɪ/", "pos": "vi.", "cn": "(lay, lain, lying) 躺，位于；坐落在；存在，在于 vi. (lied, lied, lying) 说谎，撒谎，编造谎言 n. 方向，位置；谎言，谎话"},
+    {"w": "lie to sb/ tell a lie to sb", "p": "", "pos": "", "cn": "向某人撒谎"},
+    {"w": "lay", "p": "/leɪ/", "pos": "vt. & vi.", "cn": "(laid, laid, laying) 安放，放置；铺放，摆放；下（蛋），产（卵）"},
+    {"w": "rise to (doing...)", "p": "", "pos": "", "cn": "能够处理…", "no": 9},
+    {"w": "acquire", "p": "/əˈkwaɪə(r)/", "pos": "vt.", "cn": "获得，得到", "no": 10},
+    {"w": "acquisition", "p": "/ˌækwɪˈzɪʃən/", "pos": "n.", "cn": "获得；习得，学得"},
+    {"w": "acquisitive", "p": "/əˈkwɪzətɪv/", "pos": "adj.", "cn": "渴望得到的，贪婪的"},
+    {"w": "acquisitively", "p": "/ə'kwizitivli/", "pos": "adv.", "cn": "能获得并保留地；贪得无厌地"},
+    {"w": "effort", "p": "/ˈefət/", "pos": "n.", "cn": "努力，费力的事；试图", "no": 11},
+    {"w": "effortless", "p": "/ˈefətləs/", "pos": "adj.", "cn": "不需费力的，容易的；（品质）自然的，天生具有的"},
+    {"w": "without effort = effortlessly", "p": "", "pos": "", "cn": "毫不费力地；轻松地"},
+    {"w": "make efforts to do sth", "p": "", "pos": "", "cn": "努力做某事"},
+    {"w": "spare no effort to do sth", "p": "", "pos": "", "cn": "不遗余力做某事"},
+    {"w": "advance", "p": "/ədˈvɑ:ns/", "pos": "n.", "cn": "进步，进展；前进，行进 vt. & vi. 发展，进步", "no": 12},
+    {"w": "advance on/towards...", "p": "", "pos": "", "cn": "朝…前进"},
+    {"w": "make advances in...", "p": "", "pos": "", "cn": "在…方面取得进步"},
+    {"w": "in advance of...", "p": "", "pos": "", "cn": "在…之前"},
+    {"w": "in advance = ahead of time", "p": "", "pos": "", "cn": "提前，预先"},
+    {"w": "advanced", "p": "/ədˈvɑːnst/", "pos": "adj.", "cn": "高级的；先进的"},
+    {"w": "advancement", "p": "/ədˈvɑ:nsmənt/", "pos": "n.", "cn": "前进，行进；进步，进展；提升，晋升"},
+    {"w": "amazing", "p": "/əˈmeɪzɪŋ/", "pos": "adj.", "cn": "令人大为惊奇的，令人惊喜的", "no": 13},
+    {"w": "It’s amazing that ...", "p": "", "pos": "", "cn": "令人惊讶的是…"},
+    {"w": "amazingly", "p": "/əˈmeɪzɪŋli/", "pos": "adv.", "cn": "令人惊讶地"},
+    {"w": "amaze", "p": "/əˈmeɪz/", "pos": "vt.", "cn": "使惊奇，使惊愕"},
+    {"w": "It amazes sb that ...＝What amazes sb is that ...", "p": "", "pos": "", "cn": "使某人惊奇的是…"},
+    {"w": "amazed", "p": "/əˈmeɪzd/", "pos": "adj.", "cn": "(人)感到惊奇/讶的"},
+    {"w": "amazedly", "p": "/əˈmeɪzɪdli/", "pos": "adv.", "cn": "惊奇地，吃惊地"},
+    {"w": "be amazed at/by/that... / to do...", "p": "", "pos": "", "cn": "对/做…感到惊奇/讶"},
+    {"w": "amazement", "p": "/əˈmeɪzmənt/", "pos": "n.", "cn": "惊诧，惊奇"},
+    {"w": "in amazement", "p": "", "pos": "", "cn": "惊奇地，惊讶地"},
+    {"w": "to one’s amazement", "p": "", "pos": "", "cn": "令/让某人吃惊的是"},
+    {"w": "confidence", "p": "/ˈkɒnfɪdəns/", "pos": "n.", "cn": "信心，信任；把握", "no": 14},
+    {"w": "have confidence in...", "p": "", "pos": "", "cn": "对…充满信心"},
+    {"w": "confident", "p": "/ˈkɒnfɪdənt/", "pos": "adj.", "cn": "自信的，充满信心的；坚信的，肯定的"},
+    {"w": "confidently", "p": "/ˈkɒnfɪdəntli/", "pos": "adv.", "cn": "自信地；安心地"},
+    {"w": "confidential", "p": "/ˌkɒnfɪˈdenʃl/", "pos": "adj.", "cn": "机密的，保密的；神秘的，隐秘的；受信任的，委以机密的"},
+    {"w": "make a difference (to...)", "p": "", "pos": "", "cn": "(对…)起作用，有影响", "no": 15},
+    {"w": "make no/ little/ some/ much difference (to...)", "p": "", "pos": "", "cn": "没有/几乎没有/有一些/很大的影响"},
+    {"w": "make the most/best of...", "p": "", "pos": "", "cn": "充分利用…，尽情享受…", "no": 16},
+    {"w": "make full/ good use of...", "p": "", "pos": "", "cn": "充分/好好利用…"},
+    {"w": "resource", "p": "/rɪˈsɔːs/", "pos": "n.", "cn": "资源；资料；谋略；个人素质（resources）；（逆境中的）出路，应付办法 vt. 向…提供资金（或设备）", "no": 17},
+    {"w": "source", "p": "/sɔːs/", "pos": "n.", "cn": "来源，出处；根源"},
+    {"w": "resourceful", "p": "/rɪˈsɔːsfl/", "pos": "adj.", "cn": "足智多谋的，机敏的"},
+    {"w": "resourcefully", "p": "/rɪˈsɔːsfəli/", "pos": "adv.", "cn": "机智地"},
+    {"w": "resourcefulness", "p": "/rɪˈsɔːsflnəs/", "pos": "n.", "cn": "足智多谋"},
+    {"w": "take advantage of...", "p": "", "pos": "", "cn": "利用…", "no": 18},
+    {"w": "facility", "p": "/fəˈsɪləti/", "pos": "n.", "cn": "( pl. facilities ) 设施，设备；场所", "no": 19},
+    {"w": "equal", "p": "/ˈiːkwəl/", "pos": "adj.", "cn": "相等的；平等的；相当的 n. 同等的人(物) linking v. 与…相等 vt. 比得上", "no": 20},
+    {"w": "be equal to (doing)...", "p": "", "pos": "", "cn": "等于…；相当于…；胜任（做）…"},
+    {"w": "equal sb/sth in (doing) sth", "p": "", "pos": "", "cn": "在（做）某事上比得过某人/物"},
+    {"w": "without equal", "p": "", "pos": "", "cn": "无与伦比"},
+    {"w": "have no equal", "p": "", "pos": "", "cn": "无与伦比"},
+    {"w": "equally", "p": "/ˈiːkwəlli/", "pos": "adv.", "cn": "平等地；相当地"},
+    {"w": "equality", "p": "/iˈkwɒləti/", "pos": "n.", "cn": "平等；均等；等式"},
+    {"w": "attitude", "p": "/ˈætɪtju:d/", "pos": "n.", "cn": "态度，看法", "no": 21},
+    {"w": "attitude towards/to...", "p": "", "pos": "", "cn": "对…的态度/看法"},
+    {"w": "altitude", "p": "/ˈæltɪtjuːd/", "pos": "n.", "cn": "海拔高度；高地；地平纬度；顶垂线；（等级和地位等的）高级"},
+    {"w": "goal", "p": "/ɡəʊl/", "pos": "n.", "cn": "目标；进球得分", "no": 22},
+    {"w": "own goal", "p": "", "pos": "", "cn": "乌龙球"},
+    {"w": "balance", "p": "/ˈbæləns/", "pos": "vt.", "cn": "同等重视；（使）确保平衡；权衡重要性 n. 均衡；平衡；平衡能力；账户余额，结存；余款；天平，秤；平衡器", "no": 23},
+    {"w": "keep/lose one’s balance", "p": "", "pos": "", "cn": "保持/失去平衡"},
+    {"w": "keep a balance between A and B", "p": "", "pos": "", "cn": "A 与 B 之间保持平衡"},
+    {"w": "balance ... against ...", "p": "", "pos": "", "cn": "权衡/比较…与…"},
+    {"w": "balancing", "p": "/ˈbælənsɪŋ/", "pos": "n.", "cn": "平衡；结算；调零装置"},
+    {"w": "balanced", "p": "/ˈbælənst/", "pos": "adj.", "cn": "平衡的，均衡的"},
+    {"w": "a balanced diet", "p": "", "pos": "", "cn": "均衡饮食"},
+    {"w": "imbalance", "p": "/ɪmˈbæləns/", "pos": "n.", "cn": "不平衡；不安定"},
+    {"w": "imbalanced", "p": "/ɪmˈbælənst/", "pos": "adj.", "cn": "不平衡的；比例失调的"},
+    {"w": "counterbalance", "p": "/ˈkaʊntəbæləns/", "pos": "v.", "cn": "使平衡,抵消 n. 平衡力，抗衡力；抵消因素，制约力"},
+    {"w": "improve", "p": "/ɪmˈpru:v/", "pos": "vt. & vi.", "cn": "改善，改进", "no": 24},
+    {"w": "improvement", "p": "/ɪmˈpru:vmənt/", "pos": "n.", "cn": "改善，改进"},
+    {"w": "last but not least", "p": "", "pos": "", "cn": "最后但同样重要的", "no": 25},
+    {"w": "well-rounded", "p": "/ˌwelˈraʊndɪd/", "pos": "adj.", "cn": "全面发展的；面面俱到的", "no": 26},
+    {"w": "individual", "p": "/ˌɪndɪˈvɪdʒuəl/", "pos": "n.", "cn": "个人 adj. 单独的；个别的", "no": 27},
+    {"w": "individually", "p": "/ˌɪndɪˈvɪdʒuəli/", "pos": "adv.", "cn": "单独地；个别地"},
+    {"w": "individuality", "p": "/ˌɪndɪˌvɪdʒuˈæləti/", "pos": "n.", "cn": "个性；个人特征"},
+    {"w": "character", "p": "/ˈkærəktə(r)/", "pos": "n.", "cn": "品质，性格；特点；人物，角色；符号，文字", "no": 28},
+    {"w": "Chinese characters", "p": "", "pos": "", "cn": "汉字；中国字"},
+    {"w": "characteristic", "p": "/ˌkærəktəˈrɪstɪk/", "pos": "n.", "cn": "特征，特点，特色 adj. 独特的，典型的"},
+    {"w": "characteristically", "p": "/ˌkærəktəˈrɪstɪkli/", "pos": "adv.", "cn": "典型地；表示特性地"},
+    {"w": "characterize", "p": "/ˈkærəktəraɪz/", "pos": "", "cn": "(also characterise) vt. 是…的特征，以…为典型；使…具有特点； 描述，刻画"},
+    {"w": "be characterized by...", "p": "", "pos": "", "cn": "以…为特征，具有…的特点"},
+    {"w": "responsible", "p": "/rɪˈspɒnsəbl/", "pos": "adj.", "cn": "有责任的，负责的；可靠的", "no": 29},
+    {"w": "responsibly", "p": "/rɪˈspɒnsəbli/", "pos": "adv.", "cn": "负责地；可靠地"},
+    {"w": "irresponsible", "p": "/ˌɪrɪˈspɒnsəbl/", "pos": "adj.", "cn": "不负责任的，不可靠的"},
+    {"w": "irresponsibly", "p": "/ˌɪrɪˈspɒnsəbli/", "pos": "adv.", "cn": "不负责地；不可靠地"},
+    {"w": "responsibility", "p": "/rɪˌspɒnsəˈbɪləti/", "pos": "n.", "cn": "责任，负责；职责"},
+    {"w": "be responsible for... / to do... = take responsibility for... / to do...", "p": "", "pos": "", "cn": "对…负责；负责做…"},
+    {"w": "ahead", "p": "/əˈhed/", "pos": "adv.", "cn": "(时间、空间)向前；提前", "no": 30},
+    {"w": "ahead of time = in advance", "p": "", "pos": "", "cn": "提前，预先"},
+    {"w": "junior", "p": "/ˈdʒu:niə(r)/", "pos": "adj.", "cn": "（学校）为11或13岁以下儿童设立的；地位（或级别）低的；青少年的 n. 职位较低者；青少年运动员", "no": 31},
+    {"w": "be junior to sb", "p": "", "pos": "", "cn": "比某人的地位/职位低"},
+    {"w": "be junior to sb by + 年龄", "p": "", "pos": "", "cn": "比某人年纪小…（= be + 年龄 junior to sb）"},
+    {"w": "forward", "p": "/ˈfɔːwəd/", "pos": "adv.", "cn": "向将来；向前；进展，前进", "no": 32},
+    {"w": "look forward to (doing...)", "p": "", "pos": "", "cn": "期待；盼望(做…)"},
+    {"w": "look back (on) ...", "p": "", "pos": "", "cn": "回忆，回顾"},
+    {"w": "look out for ...", "p": "", "pos": "", "cn": "注意察看，留心"},
+    {"w": "look down on/upon ...", "p": "", "pos": "", "cn": "看不起；轻视；蔑视"},
+    {"w": "look up to ...", "p": "", "pos": "", "cn": "尊敬，敬仰钦佩（某人）"},
+    {"w": "look into ...", "p": "", "pos": "", "cn": "朝…里看；调查，研究"},
+    {"w": "look through ...", "p": "", "pos": "", "cn": "透过…看；浏览；温习"},
+    {"w": "independent", "p": "/ˌɪndɪˈpendənt/", "pos": "adj.", "cn": "自主的，有主见的；自立的", "no": 33},
+    {"w": "independently", "p": "/ˌɪndɪˈpendəntli/", "pos": "adv.", "cn": "自主地；自立地"},
+    {"w": "dependent", "p": "/dɪˈpendənt/", "pos": "adj.", "cn": "依赖的，依靠的"},
+    {"w": "dependently", "p": "/dɪˈpendəntli/", "pos": "adv.", "cn": "依赖地，依靠地"},
+    {"w": "dependency", "p": "/dɪˈpendənsi/", "pos": "n.", "cn": "属国，附庸国；从属；从属物；依赖(关系)"},
+    {"w": "dependence", "p": "/dɪˈpendəns/", "pos": "n.", "cn": "依赖，依靠；瘾"},
+    {"w": "independence", "p": "/ˌɪndɪˈpendəns/", "pos": "n.", "cn": "自立，独立"},
+    {"w": "depend", "p": "/dɪˈpend/", "pos": "vt. & vi.", "cn": "取决于；依赖，依靠；相信，指望；那得看情况；（语法上）从属"},
+    {"w": "depend on/ upon...", "p": "", "pos": "", "cn": "依靠，依赖；指望；期待；取决于…"},
+    {"w": "It depends.", "p": "", "pos": "", "cn": "看情况而定。"},
+    {"w": "focus", "p": "/ˈfəʊkəs/", "pos": "n.", "cn": "焦点，重点 vt. & vi. 集中", "no": 34},
+    {"w": "focused", "p": "/ˈfəʊkəst/", "pos": "adj.", "cn": "注意力集中的，专注的，专心的；目标明确的；（声音或图像）清晰的"},
+    {"w": "focus on... = concentrate on...", "p": "", "pos": "", "cn": "集中精力于…"},
+    {"w": "focus one’s eyes/attention/mind on ...", "p": "", "pos": "", "cn": "把某人的目光/注意力/心思集中到…上"},
+    {"w": "the focus of ...", "p": "", "pos": "", "cn": "…的焦点/中心"},
+    {"w": "detail", "p": "/ˈdi:teɪl/", "pos": "n.", "cn": "细节；具体情况 vt. 详细说明，详述；彻底清洗（汽车）；派遣，选派", "no": 35},
+    {"w": "in detail", "p": "", "pos": "", "cn": "详细地，具体地"},
+    {"w": "detailed", "p": "/ˈdiːteɪld/", "pos": "adj.", "cn": "详尽的，详细的；精细的，细致的"},
+    {"w": "as a result of", "p": "", "pos": "", "cn": "由于", "no": 36},
+    {"w": "as a result", "p": "", "pos": "", "cn": "结果"},
+    {"w": "result", "p": "/rɪˈzʌlt/", "pos": "n.", "cn": "结果；后果；考试成绩；成效，成果 vi. 发生，产生；导致，造成"},
+    {"w": "without result", "p": "", "pos": "", "cn": "没有结果；白费"},
+    {"w": "result from (doing) ...", "p": "", "pos": "", "cn": "由…(原因)引起"},
+    {"w": "result in (doing) ...", "p": "", "pos": "", "cn": "导致…(的结果)"},
+    {"w": "tip", "p": "/tɪp/", "pos": "n.", "cn": "指点，实用的提示；尖端，末梢；小费 v.（使）倾斜，打翻；给/付小费；扔掉，倒掉", "no": 37},
+    {"w": "base", "p": "/beɪs/", "pos": "vt.", "cn": "以…为基础（依据） n. 根据；基础；基底；总部，大本营", "no": 38},
+    {"w": "fan base", "p": "", "pos": "", "cn": "粉丝群体"},
+    {"w": "baseline", "p": "/ˈbeɪslaɪn/", "pos": "n.", "cn": "基线，基准；底线；垒线"},
+    {"w": "base... on/upon...", "p": "", "pos": "", "cn": "…以…为基础；把…建立在…的基础上"},
+    {"w": "be based on/upon...", "p": "", "pos": "", "cn": "以…为基础"},
+    {"w": "at the base of...", "p": "", "pos": "", "cn": "在…的底部"},
+    {"w": "basis", "p": "/ˈbeɪsɪs/", "pos": "n.", "cn": "基础；原因；基准；方式；理由，根据；主要成分（或部分）( pl. bases )"},
+    {"w": "on the basis of...", "p": "", "pos": "", "cn": "以…为基础"},
+    {"w": "on a regular basis", "p": "", "pos": "", "cn": "以定期的方式，每天，定期"},
+    {"w": "basic", "p": "/ˈbeɪsɪk/", "pos": "adj.", "cn": "基础的，基本的 n. 基本要素/原则"},
+    {"w": "basically", "p": "/ˈbeɪsɪkli/", "pos": "adv.", "cn": "基础地，基本地"},
+    {"w": "remind", "p": "/rɪˈmaɪnd/", "pos": "vt.", "cn": "提醒，使想起", "no": 39},
+    {"w": "reminder", "p": "/rɪˈmaɪndə(r)/", "pos": "n.", "cn": "提醒物；提示"},
+    {"w": "remind sb to do sth", "p": "", "pos": "", "cn": "提醒某人去做某事"},
+    {"w": "remind sb of / about sth", "p": "", "pos": "", "cn": "提醒某人某事/使某人想起某事"},
+    {"w": "remind (sb) that/how/what ...", "p": "", "pos": "", "cn": "提醒（某人）…"},
+    {"w": "stick to ( doing...)", "p": "", "pos": "", "cn": "坚持；固守，维持", "no": 40},
+    {"w": "stick", "p": "/stɪk/", "pos": "vt. & vi.", "cn": "(stuck, stuck, sticking) 粘，贴；刺，戳，插；摆放；伸出，突出；卡住，钉住 n. 枯枝，枝条；条(状物)，棍(状物)；签；球棍，球棒；变速杆，操纵杆；批评，惩罚"},
+    {"w": "chopstick", "p": "/ˈtʃɒpstɪk/", "pos": "n.", "cn": "筷子"},
+    {"w": "walking stick", "p": "", "pos": "", "cn": "拐杖"},
+    {"w": "proposal", "p": "/prəˈpəʊzl/", "pos": "n.", "cn": "提议，建议，动议", "no": 41},
+    {"w": "proposer", "p": "/prəˈpəʊzə(r)/", "pos": "n.", "cn": "提案人；申请人"},
+    {"w": "propose", "p": "/prəˈpəʊz/", "pos": "vt. & vi.", "cn": "提议，建议；提出；提名，推荐；计划，打算；求婚；提交（动议）"},
+    {"w": "aim", "p": "/eɪm/", "pos": "n.", "cn": "目的，目标；瞄准，对准；枪法，击中目标的能力 vi. & vt. 力争做到；目的是；针对；旨在；瞄准，对准", "no": 42},
+    {"w": "aimless", "p": "/ˈeɪmləs/", "pos": "adj.", "cn": "没有目标的；无目的的"},
+    {"w": "aimlessly", "p": "/ˈeɪmləsli/", "pos": "adv.", "cn": "漫无目的地，无目标地"},
+    {"w": "with the aim of...", "p": "", "pos": "", "cn": "以…为目的/目标；意在…"},
+    {"w": "take aim at... = aim at...", "p": "", "pos": "", "cn": "瞄准…"},
+    {"w": "aim... at...", "p": "", "pos": "", "cn": "把… 瞄准…"},
+    {"w": "aim to do...", "p": "", "pos": "", "cn": "旨在做…，目的在于做某事；打算做某事；计划做某事"},
+    {"w": "be aimed at (doing) ...", "p": "", "pos": "", "cn": "针对…；以…为目的；意欲/旨在做…"},
+    {"w": "style", "p": "/staɪl/", "pos": "n.", "cn": "风格；方式；样式 vt. 设计，给…造型；使合潮流", "no": 43},
+    {"w": "life style", "p": "", "pos": "", "cn": "生活方式"},
+    {"w": "in style", "p": "", "pos": "", "cn": "流行的，时尚的，别具一格的"},
+    {"w": "stylish", "p": "/ˈstaɪlɪʃ/", "pos": "adj.", "cn": "时髦的(fashionable)，流行的，有格调的；潇洒的"},
+    {"w": "stylishly", "p": "/ˈstaɪlɪʃli/", "pos": "adv.", "cn": "时髦地(fashionably)；新式地"},
+    {"w": "stylishness", "p": "/ˈstaɪlɪʃnəs/", "pos": "n.", "cn": "时髦；新式"},
+    {"w": "technique", "p": "/tekˈni:k/", "pos": "n.", "cn": "技巧；技艺；技能", "no": 44},
+    {"w": "technology", "p": "/tekˈnɒlədʒi/", "pos": "n.", "cn": "技术"},
+    {"w": "technological", "p": "/ˌteknəˈlɒdʒɪkl/", "pos": "adj.", "cn": "技术的，科技的，工艺的"},
+    {"w": "technologically", "p": "/ˌteknəˈlɒdʒɪkli/", "pos": "adv.", "cn": "科技地；技术上地；严格意义上地"},
+    {"w": "technologist", "p": "/tekˈnɒlədʒɪst/", "pos": "n.", "cn": "技术专家；工艺学家"},
+    {"w": "technician", "p": "/tekˈnɪʃn/", "pos": "n.", "cn": "技师，技术人员；技巧精湛者，精于技巧者"},
+    {"w": "workshop", "p": "/ˈwɜ:kʃɒp/", "pos": "n.", "cn": "研讨会，讲习班；车间，作坊", "no": 45},
+    {"w": "professional", "p": "/prəˈfeʃənl/", "pos": "adj.", "cn": "职业的，专业的；有职业的；娴熟的，精通业务的 n. 专业人员，专业人士；专家；职业选手/教练", "no": 46},
+    {"w": "professionally", "p": "/prəˈfeʃənəli/", "pos": "adv.", "cn": "专业地；内行地"},
+    {"w": "profession", "p": "/prəˈfeʃn/", "pos": "n.", "cn": "专业；职业"},
+    {"w": "professor", "p": "/prəˈfesə(r)/", "pos": "n.", "cn": "教授；讲师"},
+    {"w": "material", "p": "/məˈtɪəriəl/", "pos": "n.", "cn": "材料，素材 adj. 物质的，实际的；客观存在的", "no": 47},
+    {"w": "materially", "p": "/məˈtɪəriəli/", "pos": "adv.", "cn": "物质上地；实质地；极大地"},
+    {"w": "poster", "p": "/ˈpəʊstə(r)/", "pos": "n.", "cn": "海报；（在网络留言板上）发布消息的人", "no": 48},
+    {"w": "post", "p": "/pəʊst/", "pos": "n.", "cn": "邮政，邮递；邮件，包裹；收集 vt. 邮寄；张贴，发帖子；使驻守，设置（岗哨等）"},
+    {"w": "secondary", "p": "/ˈsekəndri/", "pos": "adj.", "cn": "中学的；次要的；第二位/期的；间接的 n. 副手，下属；第二防线", "no": 49},
+    {"w": "secondary school", "p": "", "pos": "", "cn": "中学"},
+    {"w": "exchange", "p": "/ɪksˈtʃeɪndʒ/", "pos": "n. & vt.", "cn": "交换；交流；兑换", "no": 50},
+    {"w": "exchange student", "p": "", "pos": "", "cn": "交换生；交流生"},
+    {"w": "exchange sth for sth with sb", "p": "", "pos": "", "cn": "用某物与某人交换某物"},
+    {"w": "in exchange for...", "p": "", "pos": "", "cn": "作为对…的交换"},
+    {"w": "host", "p": "/həʊst/", "pos": "n.", "cn": "主人；东道主；主持人；寄主，宿主；（接受移植组织/器官的）受体；主机；许多人 vt. 主办；主持；做东"},
+    {"w": "hostess", "p": "/ˈhəʊstəs/", "pos": "n.", "cn": "女主人；女东道主；女主持人；女服务员"},
+    {"w": "a host of ...", "p": "", "pos": "", "cn": "许多的，大量的"},
+    {"w": "a.m.", "p": "/ˌeɪˈem/", "pos": "", "cn": "上午", "no": 52},
+    {"w": "p.m.", "p": "/ˌpiːˈem/", "pos": "", "cn": "下午", "no": 52},
+    {"w": "biology", "p": "/baɪˈɒlədʒi/", "pos": "n.", "cn": "生物学", "no": 53},
+    {"w": "biologist", "p": "/baɪˈɒlədʒɪst/", "pos": "n.", "cn": "生物学家"},
+    {"w": "biological", "p": "/ˌbaɪəˈlɒdʒɪkəl/", "pos": "adj.", "cn": "生物的，生物学的，生命的；亲生的；含酶的；生化武器的"},
+    {"w": "tough", "p": "/tʌf/", "pos": "adj.", "cn": "艰难的；严厉的；坚强的；坚固的", "no": 54},
+    {"w": "toughly", "p": "/ˈtʌfli/", "pos": "adv.", "cn": "坚强地；固执地；强硬地"},
+    {"w": "toughness", "p": "/ˈtʌfnəs/", "pos": "n.", "cn": "硬，切不动；坚韧，坚强；艰巨性；强硬"},
+    {"w": "alarm", "p": "/əˈlɑ:m/", "pos": "n.", "cn": "闹钟；恐慌；警报；警报器 vt. 使惊恐，使害怕", "no": 55},
+    {"w": "alarm system", "p": "", "pos": "", "cn": "(防盗)警报系统"},
+    {"w": "alarming", "p": "/əˈlɑːmɪŋ/", "pos": "adj.", "cn": "令人担忧的，令人恐惧的"},
+    {"w": "alarmed", "p": "/əˈlɑ:md/", "pos": "adj.", "cn": "担忧的，惊恐的；有警报装置的"},
+    {"w": "be alarmed at ...", "p": "", "pos": "", "cn": "对…感到惊慌"},
+    {"w": "contribution", "p": "/ˌkɒntrɪˈbju:ʃn/", "pos": "n.", "cn": "贡献；捐款；捐赠；稿件，投稿；定期缴款", "no": 56},
+    {"w": "make a contribution/contributions to (doing)...", "p": "", "pos": "", "cn": "为…做贡献"},
+    {"w": "contribute", "p": "/kənˈtrɪbjuːt/", "pos": "vi. & vt.", "cn": "是…的原因之一；捐赠，捐献；增加，添加"},
+    {"w": "contribute to (doing ...)", "p": "", "pos": "", "cn": "为…做贡献，捐赠；是…的原因之一；有助于，促成，导致；投稿"},
+    {"w": "contribute... to ...", "p": "", "pos": "", "cn": "把…捐给…"},
+    {"w": "contributor", "p": "/kənˈtrɪbjətə(r)/", "pos": "n.", "cn": "捐赠者，作出贡献者；促成因素；撰稿人，投稿人"},
+    {"w": "contributory", "p": "/kənˈtrɪbjətəri/", "pos": "adj.", "cn": "捐助的；贡献的；有助于…的"},
+    {"w": "fortunately", "p": "/ˈfɔ:tʃənətli/", "pos": "adv.", "cn": "幸运地；幸亏", "no": 57},
+    {"w": "fortunate", "p": "/ˈfɔ:tʃənət/", "pos": "adj.", "cn": "幸运的；吉利的"},
+    {"w": "unfortunate", "p": "/ʌnˈfɔ:tʃənət/", "pos": "adj.", "cn": "不幸的；令人遗憾的"},
+    {"w": "unfortunately", "p": "/ʌnˈfɔ:tʃənətli/", "pos": "adv.", "cn": "不幸地"},
+    {"w": "fortune", "p": "/ˈfɔːtʃuːn; ˈfɔːrtʃən/", "pos": "n.", "cn": "运气，幸运；命运；财产；财富"},
+    {"w": "misfortune", "p": "/ˌmɪsˈfɔ:tʃu:n/", "pos": "n.", "cn": "不幸, 厄运"},
+    {"w": "fame and fortune", "p": "", "pos": "", "cn": "名利"},
+    {"w": "make one’s fortune", "p": "", "pos": "", "cn": "发财"},
+    {"w": "seek/try one’s fortune", "p": "", "pos": "", "cn": "找出路/碰运气"},
+    {"w": "tell one’s fortune", "p": "", "pos": "", "cn": "算命"},
+    {"w": "have the fortune to do sth / be fortunate to do sth", "p": "", "pos": "", "cn": "有幸做某事"},
+    {"w": "over time", "p": "", "pos": "", "cn": "随着时间流逝，久而久之", "no": 58},
+    {"w": "option", "p": "/ˈɒpʃn/", "pos": "n.", "cn": "可选择的事物，选择；选修课", "no": 59},
+    {"w": "optional", "p": "/ˈɒpʃənl/", "pos": "adj.", "cn": "可选择的；选修的"},
+    {"w": "optionally", "p": "/ˈɒpʃənəli/", "pos": "adv.", "cn": "可选择地；随意地"},
+    {"w": "butter", "p": "/ˈbʌtə(r)/", "pos": "n.", "cn": "黄油", "no": 60},
+    {"w": "pudding", "p": "/ˈpʊdɪŋ/", "pos": "n.", "cn": "甜点；布丁", "no": 61},
+    {"w": "attract", "p": "/əˈtrækt/", "pos": "vt.", "cn": "吸引；使喜爱；招引；引起（反应）", "no": 62},
+    {"w": "be attracted by...", "p": "", "pos": "", "cn": "被…吸引"},
+    {"w": "be attracted to sth", "p": "", "pos": "", "cn": "喜爱某事物"},
+    {"w": "attract sb to sth", "p": "", "pos": "", "cn": "引起某人对某事的兴趣"},
+    {"w": "attract one’s attention", "p": "", "pos": "", "cn": "吸引某人的注意"},
+    {"w": "attraction", "p": "/əˈtrækʃən/", "pos": "n.", "cn": "吸引力；有吸引力的事物"},
+    {"w": "a tourist attraction", "p": "", "pos": "", "cn": "旅游景点"},
+    {"w": "attractive", "p": "/əˈtræktɪv/", "pos": "adj.", "cn": "有吸引力的，有魅力的"},
+    {"w": "attractively", "p": "/əˈtræktɪvli/", "pos": "adv.", "cn": "有吸引力地，有魅力地"},
+    {"w": "rugby", "p": "/ˈrʌɡbi/", "pos": "n.", "cn": "橄榄球运动", "no": 63},
+    {"w": "calligraphy", "p": "/kəˈlɪɡrəfi/", "pos": "n.", "cn": "书法，书法艺术", "no": 64},
+    {"w": "calligrapher", "p": "/kəˈlɪɡrəfə(r)/", "pos": "n.", "cn": "书法家"},
+    {"w": "calligraphy and painting", "p": "", "pos": "", "cn": "字画"},
+    {"w": "calligraphy work / competition", "p": "", "pos": "", "cn": "书法作品/比赛"},
+    {"w": "handwriting", "p": "/ˈhændraɪtɪŋ/", "pos": "n.", "cn": "手写，书写；笔迹，书法"},
+    {"w": "lead to (doing)...", "p": "", "pos": "", "cn": "导致…"},
+    {"w": "end in ...", "p": "", "pos": "", "cn": "以…而告终"},
+    {"w": "work hard in one’s studies", "p": "", "pos": "", "cn": "努力学习功课"},
+    {"w": "can’t wait to do...", "p": "", "pos": "", "cn": "迫不及待地要做…"},
+    {"w": "enjoy personal growth", "p": "", "pos": "", "cn": "享受个人成长"},
+    {"w": "open the door to potential", "p": "", "pos": "", "cn": "打开潜能的大门"},
+    {"w": "put simply", "p": "", "pos": "", "cn": "简而言之"},
+    {"w": "take an active part in", "p": "", "pos": "", "cn": "积极参与"},
+    {"w": "develop a positive attitude", "p": "", "pos": "", "cn": "培养积极的心态"},
+    {"w": "set clear goals", "p": "", "pos": "", "cn": "设立清晰的目标"},
+    {"w": "balance schoolwork with activities", "p": "", "pos": "", "cn": "平衡课业与活动（的关系）"},
+    {"w": "make efforts to improve problem-solving skills", "p": "", "pos": "", "cn": "努力提升解决问题的技能"},
+    {"w": "grow into a well-rounded individual", "p": "", "pos": "", "cn": "成长为全面发展的个人"},
+    {"w": "do well at senior high school", "p": "", "pos": "", "cn": "在高中表现好"},
+    {"w": "achieve goals", "p": "", "pos": "", "cn": "实现目标"},
+    {"w": "break down", "p": "", "pos": "", "cn": "分解"},
+    {"w": "pay off", "p": "", "pos": "", "cn": "得到回报，取得成功"},
+    {"w": "in the beginning", "p": "", "pos": "", "cn": "起初"},
+    {"w": "less advanced", "p": "", "pos": "", "cn": "没那么先进"},
+    {"w": "give me a lot of encouragement", "p": "", "pos": "", "cn": "给我很多鼓励"},
+    {"w": "make friends with them", "p": "", "pos": "", "cn": "和他们交朋友"},
+    {"w": "experience this different way of life", "p": "", "pos": "", "cn": "体验这种不同的生活方式"},
+    {"w": "be laid out neatly and beautifully", "p": "", "pos": "", "cn": "整洁美观地被铺开"},
+    {"w": "learn about the basics of Chinese calligraphy", "p": "", "pos": "", "cn": "了解中国书法的基本知识"}
+  ]
+};
+
+
+</script>
+<script>
+(function () {
+  'use strict';
+
+  var LS_KEY = 'wordfc.v1';
+  var INTERVALS = [0, 1, 2, 4, 8, 16, 32, 64]; // 天
+
+  var SAMPLE = [
+    { w:'abandon',   p:'/əˈbændən/',    pos:'v.',   cn:'放弃；抛弃',        ex:'They had to abandon the plan because of the storm.' },
+    { w:'brilliant', p:'/ˈbrɪliənt/',   pos:'adj.', cn:'杰出的；聪明的',    ex:'She came up with a brilliant solution.' },
+    { w:'curious',   p:'/ˈkjʊəriəs/',   pos:'adj.', cn:'好奇的',            ex:'I am curious about how it actually works.' },
+    { w:'delicate',  p:'/ˈdelɪkət/',    pos:'adj.', cn:'精致的；微妙的',    ex:'The negotiations are at a delicate stage.' },
+    { w:'elaborate', p:'/ɪˈlæbərət/',   pos:'adj.', cn:'精心制作的；复杂的', ex:'He gave an elaborate explanation of the theory.' },
+    { w:'fragile',   p:'/ˈfrædʒaɪl/',   pos:'adj.', cn:'易碎的；脆弱的',    ex:'Be careful, the glass is extremely fragile.' },
+    { w:'generous',  p:'/ˈdʒenərəs/',   pos:'adj.', cn:'慷慨的；大方的',    ex:'It was generous of you to share the credit.' },
+    { w:'hesitate',  p:'/ˈhezɪteɪt/',   pos:'v.',   cn:'犹豫；迟疑',        ex:'Do not hesitate to ask if you need help.' },
+    { w:'inevitable',p:'/ɪnˈevɪtəbl/',  pos:'adj.', cn:'不可避免的',        ex:'Some delay was inevitable given the weather.' },
+    { w:'justify',   p:'/ˈdʒʌstɪfaɪ/',  pos:'v.',   cn:'证明…正当；为…辩解', ex:'Nothing can justify such rude behaviour.' },
+    { w:'keen',      p:'/kiːn/',        pos:'adj.', cn:'热衷的；敏锐的',    ex:'She is keen to start the project right away.' },
+    { w:'legacy',    p:'/ˈleɡəsi/',     pos:'n.',   cn:'遗产；遗留问题',    ex:'The old factory is a legacy of the industrial age.' },
+    { w:'modest',    p:'/ˈmɒdɪst/',     pos:'adj.', cn:'谦虚的；适度的',    ex:'He is remarkably modest about his achievements.' },
+    { w:'neutral',   p:'/ˈnjuːtrəl/',   pos:'adj.', cn:'中立的；中性的',    ex:'The judge kept a neutral tone throughout.' },
+    { w:'obvious',   p:'/ˈɒbviəs/',     pos:'adj.', cn:'明显的；显而易见的', ex:'It is obvious that she has been practising.' },
+    { w:'persist',   p:'/pəˈsɪst/',     pos:'v.',   cn:'坚持；持续存在',    ex:'If the pain persists, see a doctor.' },
+    { w:'quarrel',   p:'/ˈkwɒrəl/',     pos:'n./v.',cn:'争吵；吵架',        ex:'They had a quarrel about money last night.' },
+    { w:'reluctant', p:'/rɪˈlʌktənt/',  pos:'adj.', cn:'不情愿的',          ex:'He was reluctant to admit his mistake.' },
+    { w:'subtle',    p:'/ˈsʌtl/',       pos:'adj.', cn:'微妙的；含蓄的',    ex:'There is a subtle difference between the two words.' },
+    { w:'thrive',    p:'/θraɪv/',       pos:'v.',   cn:'兴旺；茁壮成长',    ex:'Some plants thrive in poor soil.' },
+    { w:'urgent',    p:'/ˈɜːdʒənt/',    pos:'adj.', cn:'紧急的；急迫的',    ex:'We need an urgent decision on this.' },
+    { w:'vulnerable',p:'/ˈvʌlnərəbl/',  pos:'adj.', cn:'易受伤害的；脆弱的', ex:'Young birds are vulnerable to cats.' },
+    { w:'witness',   p:'/ˈwɪtnəs/',     pos:'n./v.',cn:'目击者；目击',      ex:'She was the only witness to the accident.' },
+    { w:'yield',     p:'/jiːld/',       pos:'v./n.',cn:'屈服；出产；产量',  ex:'The farm yields enough grain for the village.' },
+    { w:'ambitious', p:'/æmˈbɪʃəs/',    pos:'adj.', cn:'有雄心的；费力的',  ex:'It is an ambitious plan for a small team.' },
+    { w:'coherent',  p:'/kəʊˈhɪərənt/', pos:'adj.', cn:'连贯的；条理清楚的', ex:'Try to write a coherent paragraph.' },
+    { w:'diminish',  p:'/dɪˈmɪnɪʃ/',    pos:'v.',   cn:'减少；减弱',        ex:'Her enthusiasm never diminished over the years.' },
+    { w:'essential', p:'/ɪˈsenʃl/',     pos:'adj.', cn:'必不可少的；本质的', ex:'Water is essential to all living things.' },
+    { w:'genuine',   p:'/ˈdʒenjuɪn/',   pos:'adj.', cn:'真正的；真诚的',    ex:'He showed genuine interest in her work.' },
+    { w:'humble',    p:'/ˈhʌmbl/',      pos:'adj.', cn:'谦逊的；卑微的',    ex:'Despite his fame, he remained humble.' }
+  ];
+
+  var DEFAULT_SETTINGS = { voiceURI: '', rate: 0.85, autoWord: true, preferLocal: true, gap: 1.2, repeat: 2, playAll: true, repeatGap: 0.3, tone: true };
+
+  /* ------------- 词库注册表 ------------- */
+  var DECKS = {};
+  DECKS.sample = { name: '示例 30 词', cards: SAMPLE };
+
+  // decks.js（外部词库）可用时自动挂载
+  (function mountExternal() {
+    var ext = (typeof window.DECKS === 'object' && window.DECKS) ? window.DECKS : null;
+    if (!ext) return;
+    Object.keys(ext).forEach(function (k) {
+      var d = ext[k];
+      if (d && Array.isArray(d.cards) && d.cards.length) {
+        DECKS[k] = { name: d.name || k, cards: d.cards };
+      }
+    });
+  })();
+
+  var DEFAULT_DECK = (DECKS.b1u1) ? 'b1u1' : 'sample';
+
+  var state = null;
+  var list = [];   // 这一次要过的卡片序列
+  var pos = 0;     // 当前是第几张（0 基）
+  var roundDone = 0;
+  var hasInteracted = false;
+  var voices = [];
+
+  function $(id) { return document.getElementById(id); }
+
+  function todayKey() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  /* ------------- 存取 ------------- */
+  function deckCards(key) {
+    if (key === 'custom') return state.customDeck || DECKS[DEFAULT_DECK].cards;
+    return (DECKS[key] || DECKS[DEFAULT_DECK]).cards;
+  }
+
+  function deckName() {
+    if (state.deckKey === 'custom') return '我的词库';
+    return (DECKS[state.deckKey] || DECKS[DEFAULT_DECK]).name;
+  }
+
+  function load() {
+    var raw = null;
+    try { raw = JSON.parse(localStorage.getItem(LS_KEY)); } catch (e) { raw = null; }
+    var stats = (raw && raw.stats && raw.stats.date === todayKey()) ? raw.stats : { date: todayKey(), done: 0 };
+    var custom = (raw && Array.isArray(raw.customDeck) && raw.customDeck.length) ? raw.customDeck : null;
+    var key = (raw && raw.deckKey) ? raw.deckKey : DEFAULT_DECK;
+    if (key === 'custom' && !custom) key = DEFAULT_DECK;
+    if (key !== 'custom' && !DECKS[key]) key = DEFAULT_DECK;
+
+    state = {
+      deckKey: key,
+      customDeck: custom,
+      deck: custom && key === 'custom' ? custom : (DECKS[key] || DECKS[DEFAULT_DECK]).cards,
+      progress: (raw && raw.progress) || {},
+      settings: Object.assign({}, DEFAULT_SETTINGS, (raw && raw.settings) || {}),
+      stats: stats
+    };
+  }
+
+  var storageOK = true;
+
+  function save() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+    catch (e) {
+      if (storageOK) { storageOK = false; toast('当前环境禁止本地存储，学习进度不会保存'); }
+    }
+  }
+
+  /* ------------- 语音 ------------- */
+  function score(v) {
+    var n = (v.name + ' ' + v.voiceURI).toLowerCase();
+    var s = 0;
+    if (n.indexOf('natural') >= 0) s += 100;
+    if (n.indexOf('neural') >= 0) s += 90;
+    if (n.indexOf('online') >= 0) s += 60;
+    if (n.indexOf('google') >= 0) s += 70;
+    if (n.indexOf('siri') >= 0) s += 50;
+    if (n.indexOf('premium') >= 0 || n.indexOf('enhanced') >= 0) s += 40;
+    if (/^en[-_]us/i.test(v.lang)) s += 20;
+    else if (/^en[-_]gb/i.test(v.lang)) s += 15;
+    if (v.localService === false) s += 5;
+    return s;
+  }
+
+  function refreshVoices() {
+    if (!('speechSynthesis' in window)) { $('voiceSel').innerHTML = '<option value="">（此浏览器不支持）</option>'; return; }
+    var all = speechSynthesis.getVoices() || [];
+    voices = all.filter(function (v) { return /^en([-_]|$)/i.test(v.lang); });
+    if (!voices.length) voices = all.slice();
+    voiceCache = null;
+    var sel = $('voiceSel');
+    sel.innerHTML = '';
+    sel.appendChild(new Option('自动（挑最佳英语发音）', ''));
+    voices.slice().sort(function (a, b) { return score(b) - score(a); }).forEach(function (v) {
+      sel.appendChild(new Option(v.name + ' · ' + v.lang, v.voiceURI));
+    });
+
+    var wanted = state.settings.voiceURI;
+    var ok = voices.some(function (v) { return v.voiceURI === wanted; });
+    sel.value = ok ? wanted : '';
+    state.settings.voiceURI = sel.value;
+  }
+
+  var voiceCache = null;
+
+  function resolveVoice() {
+    if (voiceCache) return voiceCache;
+    var uri = state.settings.voiceURI;
+    var i, v = null;
+    if (uri) {
+      for (i = 0; i < voices.length; i++) if (voices[i].voiceURI === uri) { v = voices[i]; break; }
+    }
+    if (!v && voices.length) {
+      var pool = voices;
+      if (state.settings.preferLocal) {
+        var local = voices.filter(function (x) { return x.localService !== false; });
+        if (local.length) pool = local;
+      }
+      v = pool.slice().sort(function (a, b) { return score(b) - score(a); })[0];
+    }
+    voiceCache = v;
+    return v;
+  }
+
+  /* 朗读前的替换表：只把缩写换成人话，符号一律不发音（只影响发音，不影响显示） */
+  var SPEECH_RULES = [
+    [/\bsb['’]s\b/gi, "somebody's"],
+    [/\bsb\b\.?\s*\/\s*sth\b\.?/gi, 'somebody or something'],
+    [/\bsb\b\.?/gi, 'somebody'],
+    [/\bsth\b\.?/gi, 'something'],
+    [/\betc\.?/gi, 'et cetera'],
+    [/\be\.g\.?/gi, 'for example'],
+    [/\bi\.e\.?/gi, 'that is'],
+    [/\bvs\.?/gi, 'versus'],
+    [/\bapprox\.?/gi, 'approximately'],
+    // 符号当停顿处理：+ 不再读 plus，& 不再读 and，= 不再读 equals
+    [/\s*[=＝]\s*/g, ', '],
+    [/\s*[\/／]\s*/g, ', '],
+    [/[+＋&~^*#@|<>\\]/g, ' '],
+    [/\.{2,}/g, ' '],
+    [/[\u4e00-\u9fff]+/g, ' ']
+  ];
+
+  function toSpeech(text) {
+    var s = String(text);
+    for (var i = 0; i < SPEECH_RULES.length; i++) s = s.replace(SPEECH_RULES[i][0], SPEECH_RULES[i][1]);
+    s = s.replace(/\s{2,}/g, ' ').replace(/\s+([,.;:!?)])/g, '$1').replace(/\(\s+/g, '(').trim();
+    return s || String(text);
+  }
+
+  function makeUtterance(text, voice, rate, allowRetry, pitch) {
+    var u = new SpeechSynthesisUtterance(toSpeech(text));
+    if (voice) { u.voice = voice; u.lang = voice.lang; } else { u.lang = 'en-US'; }
+    u.rate = rate;
+    u.pitch = (typeof pitch === 'number' && pitch > 0) ? pitch : 1;
+    u.volume = 1;
+    u.onerror = function (ev) {
+      var err = ev && ev.error;
+      // 指定语音不可用时，退回默认语音再试一次
+      if (allowRetry && voice && err && err !== 'interrupted' && err !== 'canceled') {
+        try { speechSynthesis.speak(makeUtterance(text, null, rate, false, pitch)); } catch (e) {}
+      }
+    };
+    return u;
+  }
+
+  // 预热：提前让语音引擎加载音色，第一句不用再等 0.5–2 秒
+  var warmed = {};
+  function warmUp() {
+    if (!('speechSynthesis' in window)) return;
+    if (speechSynthesis.speaking || speechSynthesis.pending) return;
+    var v = resolveVoice();
+    var key = v ? v.voiceURI : '__default__';
+    if (warmed[key]) return;
+    warmed[key] = true;
+    try {
+      var u = new SpeechSynthesisUtterance('a');
+      if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'en-US'; }
+      u.volume = 0;
+      u.rate = 2;
+      speechSynthesis.speak(u);
+    } catch (e) { /* ignore */ }
+  }
+
+  function speak(text) {
+    if (!text) return;
+    if (!('speechSynthesis' in window)) { toast('这个浏览器不支持朗读，请用 Chrome / Edge / Safari'); return; }
+    try {
+      // 没有声音在播时不要 cancel，省掉一次队列重置的等待
+      if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+      var rate = Number(state.settings.rate) || 0.85;
+      speechSynthesis.speak(makeUtterance(text, resolveVoice(), rate, true));
+      // Chrome 偶尔会停在 paused 状态，补一刀
+      if (speechSynthesis.paused) speechSynthesis.resume();
+    } catch (e) { console.warn(e); }
+  }
+
+  /* ------------- 自动播放 ------------- */
+  var auto = { on: false, token: 0, wait: null, watch: null, passed: 0 };
+  var fullMode = false; // 当前队列是不是"整本词库"
+
+  function repeatTimes() {
+    var n = Number(state.settings.repeat);
+    if (!isFinite(n) || n < 1) n = 1;
+    return Math.min(3, Math.round(n));
+  }
+
+  function showPlayer(on) {
+    $('autoBar').hidden = !on;
+    $('btnPlay').textContent = on ? '⏸' : '▶';
+  }
+
+  function syncPlayUI() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-repeat]'), function (b) {
+      b.classList.toggle('on', Number(b.dataset.repeat) === repeatTimes());
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-scope]'), function (b) {
+      b.classList.toggle('on', (b.dataset.scope === 'all') === !!(state && state.settings.playAll));
+    });
+    var g = gapMs() / 1000;
+    $('autoGap').value = g;
+    $('autoGapVal').textContent = g.toFixed(1) + 's';
+    var r = repeatGapMs() / 1000;
+    $('repGap').value = r;
+    $('repGapVal').textContent = r.toFixed(1) + 's';
+  }
+
+  function gapMs() {
+    var g = Number(state.settings.gap);
+    if (!isFinite(g) || g <= 0) g = 1.2;
+    return g * 1000;
+  }
+
+  // 同一个单词两遍之间的间隔
+  function repeatGapMs() {
+    var g = Number(state.settings.repeatGap);
+    if (!isFinite(g) || g < 0) g = 0.3;
+    return g * 1000;
+  }
+
+  function clearAutoTimers() {
+    clearTimeout(auto.wait);
+    clearTimeout(auto.watch);
+    auto.wait = null;
+    auto.watch = null;
+  }
+
+  // 读完触发回调；浏览器不保证 onend 时用看门狗兜底
+  function speakWithEnd(text, cb, pitch) {
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      clearTimeout(auto.watch);
+      cb();
+    }
+    if (!('speechSynthesis' in window)) {
+      auto.wait = setTimeout(finish, Math.max(900, text.length * 55));
+      return;
+    }
+    try {
+      if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+      var u = makeUtterance(text, resolveVoice(), Number(state.settings.rate) || 0.85, false, pitch);
+      u.onend = finish;
+      u.onerror = function () { auto.watch = setTimeout(finish, 400); };
+      speechSynthesis.speak(u);
+      if (speechSynthesis.paused) speechSynthesis.resume();
+      auto.watch = setTimeout(finish, Math.max(4000, text.length * 240));
+    } catch (e) {
+      auto.wait = setTimeout(finish, 1200);
+    }
+  }
+
+  // 把同一段话读 n 遍；开了「升/降调」时，第 1 遍升（问句语调）、第 2 遍降（陈述语调）
+  function speakTimes(token, text, times, cb) {
+    var total = Math.max(1, times);
+    var remaining = total;
+    function once() {
+      if (!auto.on || token !== auto.token) return;
+      var index = total - remaining;
+      var say = text;
+      var pitch = 1;
+      if (state.settings.tone && total > 1) {
+        var base = String(text).replace(/[\s.?!。！？]+$/, '');
+        if (index % 2 === 0) { say = base + '?'; pitch = 1.2; }   // 升调
+        else { say = base + '.'; pitch = 0.82; }                  // 降调
+      }
+      speakWithEnd(say, function () {
+        if (!auto.on || token !== auto.token) return;
+        remaining--;
+        if (remaining > 0) auto.wait = setTimeout(once, repeatGapMs());
+        else cb();
+      }, pitch);
+    }
+    once();
+  }
+
+  function autoStep(token) {
+    if (!auto.on || token !== auto.token) return;
+    var card = currentCard();
+    if (!card) { autoStop(); showDone(); return; }
+
+    $('cardBody').scrollTop = 0;
+
+    speakTimes(token, card.w, repeatTimes(), function () {
+      if (!auto.on || token !== auto.token) return;
+      auto.wait = setTimeout(function () {
+        if (!auto.on || token !== auto.token) return;
+        if (card.ex) {
+          speakWithEnd(card.ex, function () {
+            if (!auto.on || token !== auto.token) return;
+            auto.wait = setTimeout(function () { autoNext(token); }, gapMs());
+          });
+        } else {
+          auto.wait = setTimeout(function () { autoNext(token); }, gapMs());
+        }
+      }, gapMs());
+    });
+  }
+
+  function autoNext(token) {
+    if (!auto.on || token !== auto.token) return;
+    roundDone++;
+    auto.passed = (auto.passed || 0) + 1;
+    if (pos >= list.length - 1) { autoStop(); pos = list.length; render(); return; }
+    pos++;
+    render();
+    autoStep(token);
+  }
+
+  function autoStart() {
+    if (auto.on) return;
+
+    if (!state.settings.playAll && !currentCard()) {
+      toast('这一轮已经过完了，先点「再来一轮」');
+      return;
+    }
+
+    // 全部模式：把整本词库铺开（放完了再按 ▶ 会从头开始）
+    var rebuild = !!state.settings.playAll && (!fullMode || pos >= list.length);
+    if (rebuild) {
+      list = state.deck.slice();
+      pos = 0;
+      roundDone = 0;
+      auto.passed = 0;
+      fullMode = true;
+    }
+
+    auto.on = true;
+    auto.token++;
+    if (rebuild) render();
+
+    showPlayer(true);
+    syncPlayUI();
+    toast('播放中：每词 ' + repeatTimes() + ' 遍 · 共 ' + list.length + ' 张');
+    autoStep(auto.token);
+  }
+
+  function autoStop() {
+    auto.on = false;
+    auto.token++;
+    clearAutoTimers();
+    showPlayer(false);
+    if ('speechSynthesis' in window) {
+      try { speechSynthesis.cancel(); } catch (e) {}
+    }
+  }
+
+  function toggleAuto() { if (auto.on) autoStop(); else autoStart(); }
+
+  /* ------------- 卡片渲染 ------------- */
+  function currentCard() { return list[pos] || null; }
+
+  function render() {
+    var card = currentCard();
+    $('leftCount').textContent = Math.max(0, list.length - pos);
+    $('doneCount').textContent = state.stats.done || 0;
+
+    var pct = list.length ? Math.round(pos / list.length * 100) : 0;
+    $('progressBar').style.width = Math.max(0, Math.min(100, pct)) + '%';
+
+    if (!card) { showDone(); return; }
+
+    $('donePanel').hidden = true;
+    $('cardWrap').hidden = false;
+    $('controls').hidden = false;
+    $('pager').hidden = false;
+    $('jumpNo').max = list.length;
+    $('jumpNo').value = pos + 1;
+    $('pgTotal').textContent = list.length;
+    $('btnPrev').disabled = pos <= 0;
+    $('btnNext').disabled = pos >= list.length - 1;
+
+    var wEl = $('word');
+    wEl.textContent = '';
+    if (card.no) {
+      var noEl = document.createElement('span');
+      noEl.className = 'no';
+      noEl.textContent = card.no + '.';
+      wEl.appendChild(noEl);
+    }
+    wEl.appendChild(document.createTextNode(card.w));
+
+    $('phonetic').textContent = card.p || '';
+    $('phonetic').hidden = !card.p;
+    $('posTag').textContent = card.pos || '';
+    $('posTag').hidden = !card.pos;
+    $('meaning').textContent = card.cn || '';
+    $('example').textContent = card.ex ? '“' + card.ex + '”' : '';
+    $('example').hidden = !card.ex;
+    $('speakEx').hidden = !card.ex;
+    $('cardBody').scrollTop = 0;
+
+    setGradeEnabled(true);
+
+    if (state.settings.autoWord && !auto.on) speak(card.w);
+  }
+
+  function setGradeEnabled(on) {
+    Array.prototype.forEach.call(document.querySelectorAll('.grade'), function (b) { b.disabled = !on; });
+  }
+
+  function sayWord() {
+    var card = currentCard();
+    if (!card) return;
+    if (auto.on) autoStop();
+    speak(card.w);
+  }
+
+  function grade(g) {
+    var card = currentCard();
+    if (!card) return;
+    if (auto.on) autoStop();
+
+    var pr = state.progress[card.w] || { box: 0, due: 0, seen: 0 };
+    pr.seen = (pr.seen || 0) + 1;
+
+    if (g === 3) pr.box = Math.min((pr.box || 0) + 1, INTERVALS.length - 1);
+    else if (g === 2) pr.box = Math.max(1, pr.box || 0);
+    else pr.box = 0;
+
+    pr.due = Date.now() + INTERVALS[pr.box] * 86400000;
+    state.progress[card.w] = pr;
+    state.stats.done = (state.stats.done || 0) + 1;
+    save();
+
+    roundDone++;
+    if (pos < list.length - 1) pos++;
+    else pos = list.length;
+    render();
+  }
+
+  /* 翻页 */
+  function go(delta) {
+    if (!list.length) return;
+    if (auto.on) autoStop();
+    var next = pos + delta;
+    if (next < 0) next = 0;
+    if (next > list.length) next = list.length;
+    if (next === pos) return;
+    pos = next;
+    render();
+  }
+
+  function jumpTo(n) {
+    if (!list.length) return;
+    if (auto.on) autoStop();
+    n = Math.round(Number(n));
+    if (!isFinite(n)) return;
+    pos = Math.max(0, Math.min(list.length - 1, n - 1));
+    render();
+  }
+
+  /* ------------- 轮次 ------------- */
+  function startRound(all) {
+    if (auto.on) autoStop();
+    auto.passed = 0;
+    fullMode = false;
+
+    var now = Date.now();
+    var picked;
+    if (all) {
+      picked = state.deck.slice();
+      shuffle(picked);
+    } else if (state.settings.playAll) {
+      picked = state.deck.slice();   // 全部：整本词库，按原顺序，可以随便翻页
+      fullMode = true;
+    } else {
+      picked = state.deck.filter(function (c) {
+        var pr = state.progress[c.w];
+        return (pr ? pr.due || 0 : 0) <= now;
+      });
+      picked.sort(function (a, b) {
+        var da = state.progress[a.w] ? state.progress[a.w].due || 0 : 0;
+        var db = state.progress[b.w] ? state.progress[b.w].due || 0 : 0;
+        return da - db;
+      });
+      picked = picked.slice(0, 60);
+    }
+    list = picked;
+    pos = 0;
+    roundDone = 0;
+    render();
+  }
+
+  function shuffle(a) {
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  function showDone() {
+    $('cardWrap').hidden = true;
+    $('controls').hidden = true;
+    $('pager').hidden = true;
+    setGradeEnabled(false);
+    $('donePanel').hidden = false;
+    $('progressBar').style.width = list.length ? '100%' : '0%';
+
+    $('doneTitle').textContent = roundDone ? '本轮完成 🎉' : '暂时没有要复习的卡';
+    var extra = auto.passed ? '，其中 ' + auto.passed + ' 张自动播放未记成绩' : '';
+    $('doneText').textContent = roundDone
+      ? ('这一轮过了 ' + roundDone + ' 张' + extra)
+      : ('词库共 ' + state.deck.length + ' 个单词，都在休息中');
+
+    var nd = nextDueTime();
+    $('nextDue').textContent = nd ? ('下一次复习：' + nd) : '';
+
+    $('btnAgain').hidden = false;
+    $('btnAll').hidden = false;
+  }
+
+  function nextDueTime() {
+    var now = Date.now();
+    var min = Infinity;
+    state.deck.forEach(function (c) {
+      var pr = state.progress[c.w];
+      var d = pr ? pr.due || 0 : 0;
+      if (d > now && d < min) min = d;
+    });
+    if (!isFinite(min)) return '';
+    var diff = min - now;
+    var h = diff / 3600000;
+    if (h < 1) return Math.max(1, Math.round(diff / 60000)) + ' 分钟后';
+    if (h < 24) return Math.round(h) + ' 小时后';
+    return Math.round(h / 24) + ' 天后';
+  }
+
+  /* ------------- 提示 ------------- */
+  var toastTimer = null;
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2200);
+  }
+
+  /* ------------- 确认对话框（不依赖浏览器 confirm） ------------- */
+  var askCb = null;
+  function ask(msg, onOk) {
+    askCb = onOk;
+    $('askMsg').textContent = msg;
+    $('ask').hidden = false;
+  }
+  function closeAsk() { $('ask').hidden = true; askCb = null; }
+
+  /* ------------- 应用导入结果 ------------- */
+  function applyImport(deck) {
+    state.customDeck = deck;
+    state.deckKey = 'custom';
+    state.deck = deck;
+    save();
+    closeSettings();
+    syncDeckName();
+    fillDeckSelect();
+    startRound(false);
+    var withPhon = 0;
+    deck.forEach(function (c) { if (c.p) withPhon++; });
+    toast('已导入 ' + deck.length + ' 张：' + withPhon + ' 词 + ' + (deck.length - withPhon) + ' 短语');
+  }
+
+  /* ------------- 导入 ------------- */
+  function parseDeck(text) {
+    var out = [];
+    var seen = {};
+    text.split(/\r?\n/).forEach(function (line) {
+      line = line.trim();
+      if (!line) return;
+      var parts = line.split(/\t+|\s*[|｜]\s*/);
+      if (parts.length < 2) parts = line.split(/\s*[,，]\s*/);
+      if (parts.length < 2) return;
+
+      var i = 0;
+      var w = (parts[i++] || '').trim();
+      if (!w) return;
+      var p = '';
+      if (parts[i] && /^[\/\[]/.test(parts[i].trim())) p = parts[i++].trim();
+      var meaning = (parts[i++] || '').trim();
+      var ex = parts.slice(i).join(' ').trim();
+
+      var pos = '';
+      var m = meaning.match(/^([a-zA-Z]{1,5}\.\s*(?:[&/]\s*[a-zA-Z]{1,5}\.)?)\s*/);
+      if (m) { pos = m[1].replace(/\s+/g, ' ').trim(); meaning = meaning.slice(m[0].length).trim(); }
+
+      var key = w.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push({ w: w, p: p, pos: pos, cn: meaning, ex: ex });
+    });
+    return out;
+  }
+
+  /* ------------- 设置面板 ------------- */
+  function formatRate(r) {
+    var n = Math.round(Number(r) * 100) / 100;
+    return String(n).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '') + '×';
+  }
+
+  function fillDeckSelect() {
+    var sel = $('deckSel');
+    sel.innerHTML = '';
+    Object.keys(DECKS).forEach(function (k) {
+      sel.appendChild(new Option(DECKS[k].name + '（' + DECKS[k].cards.length + ' 张）', k));
+    });
+    if (state.customDeck) {
+      sel.appendChild(new Option('我的导入（' + state.customDeck.length + ' 张）', 'custom'));
+    }
+    sel.value = state.deckKey;
+  }
+
+  function syncDeckName() { $('deckName').textContent = deckName(); }
+
+  function switchDeck(key) {
+    if (key === 'custom' && !state.customDeck) key = DEFAULT_DECK;
+    state.deckKey = key;
+    state.deck = deckCards(key);
+    save();
+    syncDeckName();
+    startRound(false);
+    toast('已切换到「' + deckName() + '」，共 ' + state.deck.length + ' 张');
+  }
+
+  function openSettings() {
+    $('settings').hidden = false;
+    $('rate').value = state.settings.rate;
+    $('rateVal').textContent = formatRate(state.settings.rate);
+    $('autoWord').checked = !!state.settings.autoWord;
+    $('tone').checked = !!state.settings.tone;
+    $('preferLocal').checked = !!state.settings.preferLocal;
+    fillDeckSelect();
+    refreshVoices();
+    warmUp();
+  }
+  function closeSettings() { $('settings').hidden = true; }
+
+  /* ------------- 事件绑定 ------------- */
+  function bind() {
+    $('card').addEventListener('click', function (e) {
+      if (e.target.closest('button')) return;
+      hasInteracted = true;
+      sayWord();
+    });
+
+    $('speakWord').addEventListener('click', function (e) {
+      e.stopPropagation(); hasInteracted = true;
+      sayWord();
+    });
+    $('speakEx').addEventListener('click', function (e) {
+      e.stopPropagation();
+      var c = currentCard();
+      if (c && c.ex) speak(c.ex); else toast('这张卡没有例句');
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.grade'), function (b) {
+      b.addEventListener('click', function () {
+        grade(Number(b.dataset.grade));
+        b.blur();
+      });
+    });
+
+    $('btnPrev').addEventListener('click', function () { go(-1); });
+    $('btnNext').addEventListener('click', function () { go(1); });
+    $('jumpNo').addEventListener('keydown', function (e) {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); jumpTo(this.value); this.blur(); }
+    });
+    $('jumpNo').addEventListener('change', function () { jumpTo(this.value); });
+
+    $('btnAgain').addEventListener('click', function () {
+      startRound(false);
+      if (!list.length) { startRound(true); toast('还没到复习时间，先随机重刷一轮'); }
+    });
+    $('btnAll').addEventListener('click', function () { startRound(true); });
+
+    $('btnSettings').addEventListener('click', openSettings);
+    $('btnPlay').addEventListener('click', toggleAuto);
+    $('autoStop').addEventListener('click', autoStop);
+
+    // 遍数 / 范围：点一下即时生效
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      var rb = t.closest('[data-repeat]');
+      if (rb) {
+        state.settings.repeat = Number(rb.dataset.repeat);
+        save();
+        syncPlayUI();
+        if (auto.on) toast('每词读 ' + repeatTimes() + ' 遍');
+        return;
+      }
+      var sb = t.closest('[data-scope]');
+      if (sb) {
+        var all = sb.dataset.scope === 'all';
+        if (!!state.settings.playAll === all) return;
+        state.settings.playAll = all;
+        save();
+        if (auto.on) autoStop();
+        fullMode = false;
+        startRound(false);
+        syncPlayUI();
+        toast(all ? '范围：全部 ' + state.deck.length + ' 张' : '范围：本轮到期');
+      }
+    });
+
+    $('autoGap').addEventListener('input', function () {
+      var v = Number(this.value);
+      if (!isFinite(v) || v <= 0) v = 1.2;
+      state.settings.gap = v;
+      $('autoGapVal').textContent = v.toFixed(1) + 's';
+      save();
+    });
+    $('repGap').addEventListener('input', function () {
+      var v = Number(this.value);
+      if (!isFinite(v) || v < 0) v = 0.3;
+      state.settings.repeatGap = v;
+      $('repGapVal').textContent = v.toFixed(1) + 's';
+      save();
+    });
+    $('btnCloseSettings').addEventListener('click', closeSettings);
+    $('settings').addEventListener('click', function (e) {
+      if (e.target === $('settings')) closeSettings();
+    });
+
+    $('askOk').addEventListener('click', function () {
+      var cb = askCb;
+      closeAsk();
+      if (cb) cb();
+    });
+    $('askCancel').addEventListener('click', closeAsk);
+    $('ask').addEventListener('click', function (e) {
+      if (e.target === $('ask')) closeAsk();
+    });
+
+    $('voiceSel').addEventListener('change', function () {
+      state.settings.voiceURI = this.value;
+      voiceCache = null;
+      warmUp();
+      save();
+      var v = resolveVoice();
+      if (v) { toast('已切换：' + v.name); speak('Hello, this is how I sound.'); }
+    });
+    $('preferLocal').addEventListener('change', function () {
+      state.settings.preferLocal = this.checked;
+      voiceCache = null;
+      warmUp();
+      save();
+      toast(this.checked ? '优先本地语音：开口更快' : '自动挑选音色（云端语音可能慢一点）');
+    });
+    $('rate').addEventListener('input', function () {
+      state.settings.rate = Number(this.value);
+      $('rateVal').textContent = formatRate(this.value);
+      save();
+    });
+    $('rate').addEventListener('change', function () { speak('Reading speed.'); });
+    $('autoWord').addEventListener('change', function () { state.settings.autoWord = this.checked; save(); });
+    $('tone').addEventListener('change', function () {
+      state.settings.tone = this.checked;
+      save();
+      toast(this.checked ? '两遍语调：第 1 遍升、第 2 遍降' : '两遍语调相同');
+      speak('Hello.');
+    });
+    $('btnTestVoice').addEventListener('click', function () {
+      speak(currentCard() ? currentCard().w : 'Vocabulary');
+    });
+
+    $('deckSel').addEventListener('change', function () { switchDeck(this.value); });
+
+    $('btnImport').addEventListener('click', function () {
+      var deck = parseDeck($('importText').value);
+      if (!deck.length) { toast('没解析出单词，检查格式：单词 | 音标 | 释义 | 例句'); return; }
+      applyImport(deck);
+    });
+
+    $('btnRestore').addEventListener('click', function () {
+      switchDeck(DEFAULT_DECK);
+      closeSettings();
+    });
+
+    $('btnResetProgress').addEventListener('click', function () {
+      ask('清空所有学习进度？此操作不可撤销。', function () {
+        state.progress = {};
+        state.stats = { date: todayKey(), done: 0 };
+        save(); closeSettings(); startRound(false);
+        toast('进度已清空');
+      });
+    });
+
+    // 全局快捷键
+    document.addEventListener('keydown', function (e) {
+      var t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+      if (e.key === 'Escape') { autoStop(); closeSettings(); closeAsk(); return; }
+      if (!$('settings').hidden) return;
+      // 让按钮自己处理空格 / 回车（例如“再来一轮”）
+      if (t && t.tagName === 'BUTTON' && (e.code === 'Space' || e.key === 'Enter')) return;
+
+      hasInteracted = true;
+      if (e.code === 'Space' || e.key === 'Enter') { e.preventDefault(); sayWord(); }
+      else if (e.key === '1') { e.preventDefault(); grade(1); }
+      else if (e.key === '2') { e.preventDefault(); grade(2); }
+      else if (e.key === '3') { e.preventDefault(); grade(3); }
+      else if (e.key === 'r' || e.key === 'R') {
+        sayWord();
+      }
+      else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); toggleAuto(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+      else if (e.key === 'Home') { e.preventDefault(); jumpTo(1); }
+      else if (e.key === 'End') { e.preventDefault(); jumpTo(list.length); }
+    });
+
+    // 首次交互：解锁 iOS 语音，同时预热语音引擎，让第一次朗读不用干等
+    document.addEventListener('pointerdown', function () { hasInteracted = true; warmUp(); }, { once: true });
+
+    if ('speechSynthesis' in window) {
+      speechSynthesis.onvoiceschanged = function () { refreshVoices(); };
+      // 某些浏览器首次调用为空，稍后重试一次
+      setTimeout(function () { if (!voices.length) refreshVoices(); }, 350);
+    }
+  }
+
+  /* ------------- 启动 ------------- */
+  load();
+  bind();
+  refreshVoices();
+  syncDeckName();
+  syncPlayUI();
+  startRound(false);
+
+  // 兜底：万一脚本出错没渲染出卡片，别让人对着空白发呆
+  setTimeout(function () {
+    var w = $('word');
+    if (w && w.textContent.trim() === '—' && !$('cardWrap').hidden) {
+      w.textContent = '卡片没加载出来';
+      toast('请用 Chrome / Edge 直接打开这个 html 文件，别在预览窗口里看');
+    }
+  }, 1500);
+
+  window.__fc = { state: state, startRound: startRound, speak: speak }; // 调试用
+})();
+</script>
+<script>
+if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+</script></body>
+</html>
+
+
+
+
