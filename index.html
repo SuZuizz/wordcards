@@ -1059,6 +1059,10 @@ window.DECKS.b1u1 = {
     u.rate = rate;
     u.pitch = (typeof pitch === 'number' && pitch > 0) ? pitch : 1;
     u.volume = 1;
+    u.onstart = function () {
+      speakOK = true;
+      if (speakWatch) { clearTimeout(speakWatch); speakWatch = null; }
+    };
     u.onerror = function (ev) {
       var err = ev && ev.error;
       // 指定语音不可用时，退回默认语音再试一次
@@ -1090,6 +1094,7 @@ window.DECKS.b1u1 = {
   function speak(text) {
     if (!text) return;
     if (!('speechSynthesis' in window)) { toast('这个浏览器不支持朗读，请用 Chrome / Edge / Safari'); return; }
+    armSpeakWatch();
     try {
       // 没有声音在播时不要 cancel，省掉一次队列重置的等待
       if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
@@ -1163,6 +1168,7 @@ window.DECKS.b1u1 = {
       auto.wait = setTimeout(finish, Math.max(900, text.length * 55));
       return;
     }
+    armSpeakWatch();
     try {
       if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
       var u = makeUtterance(text, resolveVoice(), Number(state.settings.rate) || 0.85, false, pitch);
@@ -1595,21 +1601,47 @@ window.DECKS.b1u1 = {
     }, 1600);
   }
 
-  function checkVoice() {
+  function warnNoSound() {
     var ua = navigator.userAgent || '';
     var inWx = /MicroMessenger/i.test(ua);
-    var isEdgeA = /EdgA\//i.test(ua);            // Edge 安卓版：拿不到系统语音
+    var isEdgeA = /EdgA\//i.test(ua);
     var isAndroid = /Android/i.test(ua);
 
     if (inWx) {
-      // 微信内置浏览器：直接弹窗说明，避免"没声音"的困惑
-      setTimeout(function () { $('wxTip').hidden = false; }, 500);
+      showWarn('微信内置浏览器里读不出声。点右上角「⋯」→「在浏览器打开」再试一次。');
+    } else if (isEdgeA) {
+      showWarn('安卓版 Edge 拿不到系统语音，所以没有声音（Edge 的已知问题）。点右边按钮用 Chrome 打开就有声音。', true);
+    } else if (isAndroid) {
+      showWarn('这台手机没有真正把声音播出来。检查：设置 → 系统 → 语言和输入法 → 文字转语音（TTS），确认「首选引擎」不是空的，并在里面把「语言」设为英语（美国），再回来刷新。');
+    } else {
+      showWarn('当前浏览器没有把声音播出来，检查系统「文字转语音 / 语音」设置，或换 Chrome 试试。');
     }
+  }
 
+  // 只有"真的试过说话但没出声"才提示，避免 getVoices() 还没加载就误报
+  var speakOK = false;
+  var speakWatch = null;
+
+  function armSpeakWatch() {
+    if (speakOK || speakWatch) return;
+    if (!hasInteracted) return;   // 用户还没点过屏幕时，自动朗读可能被浏览器拦掉，别误判
+    speakWatch = setTimeout(function () {
+      speakWatch = null;
+      if (speakOK) return;
+      if ('speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending)) {
+        speakOK = true;
+        return;
+      }
+      warnNoSound();
+    }, 1700);
+  }
+
+  function checkVoice() {
     if (!('speechSynthesis' in window)) {
-      if (inWx) {
+      var ua = navigator.userAgent || '';
+      if (/MicroMessenger/i.test(ua)) {
         showWarn('微信内置浏览器不支持朗读。点右上角「⋯」→「在浏览器打开」，用 Chrome 打开就有声音。');
-      } else if (isEdgeA) {
+      } else if (/EdgA\//i.test(ua)) {
         showWarn('安卓版 Edge 拿不到系统语音，所以没有声音（Edge 的已知问题）。点右边按钮用 Chrome 打开就有声音。', true);
       } else {
         showWarn('这个浏览器不支持语音朗读，建议用 Chrome 打开。');
@@ -1617,18 +1649,9 @@ window.DECKS.b1u1 = {
       return;
     }
 
-    setTimeout(function () {
-      if (voices.length) return;
-      if (inWx) {
-        showWarn('微信内置浏览器里读不出声。点右上角「⋯」→「在浏览器打开」再试一次。');
-      } else if (isEdgeA) {
-        showWarn('安卓版 Edge 拿不到系统语音，所以没有声音（Edge 的已知问题）。点右边按钮用 Chrome 打开就有声音。', true);
-      } else if (isAndroid) {
-        showWarn('这台手机没有可用的语音引擎，所以没有声音。打开：设置 → 系统 → 语言和输入法 → 文字转语音（TTS），安装并选定一个引擎（如「Speech Services by Google」），再回到这里刷新。');
-      } else {
-        showWarn('当前浏览器没有可用的语音引擎，所以读不出声。建议用 Chrome / Edge 桌面版，或检查系统的「文字转语音」设置。');
-      }
-    }, 1800);
+    if (/MicroMessenger/i.test(navigator.userAgent || '')) {
+      setTimeout(function () { $('wxTip').hidden = false; }, 500);
+    }
   }
 
   /* ------------- 确认对话框（不依赖浏览器 confirm） ------------- */
