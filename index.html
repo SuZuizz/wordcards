@@ -500,24 +500,10 @@
       进度保存在本机浏览器（localStorage），换设备 / 清缓存会丢。
     </p>
     <p class="tip" style="border-top:0;padding-top:0;margin-top:6px;color:#4d586b">
-      版本 v7 · 2026-11-03 · 词库 304 张
+      版本 v8 · 2026-11-03 · 词库 304 张
     </p>
     <div class="actions" style="margin-top:14px">
       <button class="btn primary wide" id="btnCloseSettings">完成</button>
-    </div>
-  </div>
-</div>
-
-<div class="overlay" id="wxTip" hidden>
-  <div class="sheet" style="max-width:400px">
-    <h3>微信里没有声音</h3>
-    <p class="sub" style="margin:10px 0 16px;line-height:1.8">
-      微信内置浏览器没有语音合成功能，所以这个页面在微信里读不出声，不是文件坏了。<br><br>
-      点右上角 <b style="color:#5eead4">⋯</b> → <b style="color:#5eead4">在浏览器打开</b>，
-      用 Chrome / 系统浏览器打开就有声音了。
-    </p>
-    <div class="actions" style="margin-top:0">
-      <button class="btn primary wide" id="wxTipOk">知道了，先看没声音的</button>
     </div>
   </div>
 </div>
@@ -1348,6 +1334,7 @@ window.DECKS.b1u1 = {
     function speakByTTS() {
       if (done) return;
       if (!('speechSynthesis' in window)) {
+        warnNoSound();
         auto.wait = setTimeout(finish, Math.max(900, text.length * 55));
         return;
       }
@@ -1808,13 +1795,13 @@ window.DECKS.b1u1 = {
     var isAndroid = /Android/i.test(ua);
 
     if (inWx) {
-      showWarn('微信内置浏览器里读不出声。点右上角「⋯」→「在浏览器打开」再试一次。');
+      showWarn('没播出声。先点一下卡片上的 🔊 或屏幕任意位置（微信要求先有一次点击），再试一次。');
     } else if (isEdgeA) {
-      showWarn('安卓版 Edge 拿不到系统语音，所以没有声音（Edge 的已知问题）。点右边按钮用 Chrome 打开就有声音。', true);
+      showWarn('没播出声，可能是网络问题。可以先点一下 🔊 重试；一直不行就用 Chrome 打开。', true);
     } else if (isAndroid) {
-      showWarn('这台手机没有真正把声音播出来。检查：设置 → 系统 → 语言和输入法 → 文字转语音（TTS），确认「首选引擎」不是空的，并在里面把「语言」设为英语（美国），再回来刷新。');
+      showWarn('没播出声。先确认网络正常并点一下 🔊 重试；如果还不行，换 Chrome 打开这个网址。');
     } else {
-      showWarn('当前浏览器没有把声音播出来，检查系统「文字转语音 / 语音」设置，或换 Chrome 试试。');
+      showWarn('没播出声。检查系统音量和静音开关，或换 Chrome / Edge 试试。');
     }
   }
 
@@ -1836,23 +1823,8 @@ window.DECKS.b1u1 = {
     }, 1700);
   }
 
-  function checkVoice() {
-    if (!('speechSynthesis' in window)) {
-      var ua = navigator.userAgent || '';
-      if (/MicroMessenger/i.test(ua)) {
-        showWarn('微信内置浏览器不支持朗读。点右上角「⋯」→「在浏览器打开」，用 Chrome 打开就有声音。');
-      } else if (/EdgA\//i.test(ua)) {
-        showWarn('安卓版 Edge 拿不到系统语音，所以没有声音（Edge 的已知问题）。点右边按钮用 Chrome 打开就有声音。', true);
-      } else {
-        showWarn('这个浏览器不支持语音朗读，建议用 Chrome 打开。');
-      }
-      return;
-    }
-
-    if (/MicroMessenger/i.test(navigator.userAgent || '')) {
-      setTimeout(function () { $('wxTip').hidden = false; }, 500);
-    }
-  }
+  // 启动时不再猜「这个浏览器行不行」——只有真的播不出声才提示
+  function checkVoice() {}
 
   /* ------------- 确认对话框（不依赖浏览器 confirm） ------------- */
   var askCb = null;
@@ -1995,10 +1967,6 @@ window.DECKS.b1u1 = {
     $('btnSettings').addEventListener('click', openSettings);
     $('warnClose').addEventListener('click', function () { $('warn').hidden = true; });
     $('warnChrome').addEventListener('click', openInChrome);
-    $('wxTipOk').addEventListener('click', function () { $('wxTip').hidden = true; });
-    $('wxTip').addEventListener('click', function (e) {
-      if (e.target === $('wxTip')) $('wxTip').hidden = true;
-    });
     $('btnToc').addEventListener('click', openToc);
     $('tocClose').addEventListener('click', closeToc);
     $('tocSearch').addEventListener('input', renderToc);
