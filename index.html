@@ -262,6 +262,57 @@
   }
   .toast.show{opacity:1;transform:translate(-50%,0)}
 
+  /* ---------- 目录 ---------- */
+  .toc-sheet{max-width:620px;max-height:84vh;overflow:hidden;display:flex;flex-direction:column;padding:16px}
+  .toc-head{display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid #1c2431;margin-bottom:8px;flex:none}
+  .toc-head h3{margin:0;font-size:16px;white-space:nowrap}
+  .toc-head .sub{margin:0;font-size:12px;color:var(--muted);white-space:nowrap}
+  #tocSearch{
+    flex:1;min-width:80px;max-width:230px;margin-left:auto;
+    font:inherit;font-size:13px;color:var(--fg);background:#0d131c;
+    border:1px solid var(--line);border-radius:9px;padding:6px 10px;outline:none;
+  }
+  #tocSearch:focus{border-color:#3a4a66}
+  #tocSearch::placeholder{color:#5b6678}
+  .toc-letters{display:flex;flex-wrap:wrap;gap:4px;padding-bottom:8px;flex:none}
+  .toc-letters button{
+    all:unset;cursor:pointer;padding:2px 7px;border-radius:6px;font-size:11.5px;
+    color:#79b3a8;background:#101a24;border:1px solid #1c2431;transition:.14s;
+  }
+  .toc-letters button:hover{color:#c8fff5;border-color:#2c5a52;background:#122120}
+  .toc-list{
+    overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start;
+    padding-right:6px;scrollbar-width:thin;scrollbar-color:#2a3547 transparent;
+  }
+  .toc-list::-webkit-scrollbar{width:6px}
+  .toc-list::-webkit-scrollbar-thumb{background:#2a3547;border-radius:99px}
+  .toc-group-h{
+    grid-column:1 / -1;display:flex;align-items:center;gap:8px;
+    font-size:12px;color:var(--accent);letter-spacing:1.5px;
+    padding:10px 2px 4px;border-bottom:1px dashed #1d2734;margin-top:4px;
+  }
+  .toc-group-h:first-child{margin-top:0}
+  .toc-item{
+    all:unset;cursor:pointer;display:flex;align-items:baseline;gap:8px;
+    padding:8px 11px;border-radius:10px;border:1px solid #1c2431;background:#0f151e;
+    font-size:13.5px;transition:.14s;min-width:0;
+  }
+  .toc-item:hover{border-color:#3a4a66;background:#141d29}
+  .toc-item.on{border-color:#5eead4;background:#0f2a26;color:#a7f3e8}
+  .toc-no{
+    color:var(--accent);font-size:11.5px;min-width:20px;text-align:right;
+    font-variant-numeric:tabular-nums;flex:none;
+  }
+  .toc-no.empty{color:#39465a}
+  .toc-w{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .toc-empty{grid-column:1 / -1;color:var(--muted);font-size:13px;padding:24px 4px;text-align:center}
+
+  @media (max-width:560px){
+    .toc-list{grid-template-columns:1fr}
+    .toc-head h3{font-size:15px}
+    #tocSearch{max-width:none}
+  }
+
   @media (max-width:400px){
     .brand{font-size:14px}
     .grade{padding:12px 6px;font-size:13.5px}
@@ -277,6 +328,7 @@
   <header class="top">
     <div class="brand">🔊 <span id="deckName">单词闪卡</span></div>
     <div class="meter"><b id="leftCount">0</b> 张待学 · 今日 <b id="doneCount">0</b></div>
+    <button class="ghost" id="btnToc" aria-label="目录" title="词条目录（T）">📑</button>
     <button class="ghost" id="btnPlay" aria-label="自动播放" title="自动播放（P）">▶</button>
     <button class="ghost" id="btnSettings" aria-label="设置" title="设置">⚙</button>
   </header>
@@ -427,6 +479,19 @@
     <div class="actions" style="margin-top:14px">
       <button class="btn primary wide" id="btnCloseSettings">完成</button>
     </div>
+  </div>
+</div>
+
+<div class="overlay" id="toc" hidden>
+  <div class="sheet toc-sheet">
+    <div class="toc-head">
+      <h3>词条目录</h3>
+      <span class="sub" id="tocCount"></span>
+      <input type="text" id="tocSearch" placeholder="搜单词 / 释义…" autocomplete="off" />
+      <button class="ghost tiny" id="tocClose" title="关闭">✕</button>
+    </div>
+    <div class="toc-letters" id="tocLetters"></div>
+    <div class="toc-list" id="tocList"></div>
   </div>
 </div>
 
@@ -1276,6 +1341,115 @@ window.DECKS.b1u1 = {
     render();
   }
 
+  /* ------------- 词条目录（全部卡片，A–Z 分组 + 搜索） ------------- */
+  function tocSorted() {
+    return state.deck.slice().sort(function (a, b) {
+      return String(a.w).toLowerCase().localeCompare(String(b.w).toLowerCase());
+    });
+  }
+
+  function tocKey(w) {
+    var ch = String(w).trim().charAt(0).toUpperCase();
+    return /[A-Z]/.test(ch) ? ch : '#';
+  }
+
+  function renderToc() {
+    var q = ($('tocSearch').value || '').trim().toLowerCase();
+    var all = tocSorted();
+    var shown = all.filter(function (c) {
+      if (!q) return true;
+      return (c.w + ' ' + (c.cn || '') + ' ' + (c.ex || '')).toLowerCase().indexOf(q) >= 0;
+    });
+
+    var box = $('tocList');
+    var strip = $('tocLetters');
+    var cur = currentCard();
+    box.innerHTML = '';
+    strip.innerHTML = '';
+
+    // 字母导航
+    var keys = [];
+    shown.forEach(function (c) {
+      var k = tocKey(c.w);
+      if (keys.indexOf(k) < 0) keys.push(k);
+    });
+    keys.forEach(function (k) {
+      var lb = document.createElement('button');
+      lb.textContent = k;
+      lb.addEventListener('click', function () {
+        var target = box.querySelector('[data-letter="' + k + '"]');
+        if (target && target.scrollIntoView) target.scrollIntoView({ block: 'start' });
+      });
+      strip.appendChild(lb);
+    });
+
+    if (!shown.length) {
+      var empty = document.createElement('div');
+      empty.className = 'toc-empty';
+      empty.textContent = '没有匹配「' + q + '」的词条';
+      box.appendChild(empty);
+    }
+
+    var last = null;
+    shown.forEach(function (c) {
+      var k = tocKey(c.w);
+      if (k !== last) {
+        var h = document.createElement('div');
+        h.className = 'toc-group-h';
+        h.setAttribute('data-letter', k);
+        h.textContent = k;
+        box.appendChild(h);
+        last = k;
+      }
+
+      var b = document.createElement('button');
+      b.className = 'toc-item' + (cur && cur.w === c.w ? ' on' : '');
+      var n = document.createElement('span');
+      n.className = 'toc-no' + (c.no ? '' : ' empty');
+      n.textContent = c.no ? c.no : '·';
+      var w = document.createElement('span');
+      w.className = 'toc-w';
+      w.textContent = c.w;
+      b.appendChild(n);
+      b.appendChild(w);
+      b.addEventListener('click', function () { jumpToCard(c); });
+      box.appendChild(b);
+    });
+
+    $('tocCount').textContent = q ? (shown.length + ' / ' + all.length) : (all.length + ' 张');
+  }
+
+  function openToc() {
+    if (auto.on) autoStop();
+    $('tocSearch').value = '';
+    renderToc();
+    $('toc').hidden = false;
+    var on = $('tocList').querySelector('.toc-item.on');
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'center' });
+    setTimeout(function () { if ($('tocSearch').focus) $('tocSearch').focus(); }, 60);
+  }
+
+  function closeToc() { $('toc').hidden = true; }
+
+  function jumpToCard(card) {
+    if (auto.on) autoStop();
+    var idx = list.indexOf(card);
+    if (idx < 0) {
+      // 这张卡不在当前列表里（比如正处在「本轮」），切到全部词库
+      state.settings.playAll = true;
+      save();
+      list = state.deck.slice();
+      fullMode = true;
+      syncPlayUI();
+      idx = list.indexOf(card);
+      if (idx < 0) { closeToc(); return; }
+      toast('已切到「全部」，跳到第 ' + (idx + 1) + ' 张');
+    }
+    pos = Math.max(0, Math.min(list.length - 1, idx));
+    closeToc();
+    render();
+  }
+
   /* ------------- 轮次 ------------- */
   function startRound(all) {
     if (auto.on) autoStop();
@@ -1501,6 +1675,20 @@ window.DECKS.b1u1 = {
     $('btnAll').addEventListener('click', function () { startRound(true); });
 
     $('btnSettings').addEventListener('click', openSettings);
+    $('btnToc').addEventListener('click', openToc);
+    $('tocClose').addEventListener('click', closeToc);
+    $('tocSearch').addEventListener('input', renderToc);
+    $('tocSearch').addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); closeToc(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var first = $('tocList').querySelector('.toc-item');
+        if (first) first.click();
+      }
+    });
+    $('toc').addEventListener('click', function (e) {
+      if (e.target === $('toc')) closeToc();
+    });
     $('btnPlay').addEventListener('click', toggleAuto);
     $('autoStop').addEventListener('click', autoStop);
 
@@ -1617,8 +1805,13 @@ window.DECKS.b1u1 = {
     document.addEventListener('keydown', function (e) {
       var t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
-      if (e.key === 'Escape') { autoStop(); closeSettings(); closeAsk(); return; }
+      if (e.key === 'Escape') { autoStop(); closeSettings(); closeAsk(); closeToc(); return; }
       if (!$('settings').hidden) return;
+      // 目录打开时只允许用 T / Esc 关掉，别让数字键误判卡
+      if (!$('toc').hidden) {
+        if (e.key === 't' || e.key === 'T') { e.preventDefault(); closeToc(); }
+        return;
+      }
       // 让按钮自己处理空格 / 回车（例如“再来一轮”）
       if (t && t.tagName === 'BUTTON' && (e.code === 'Space' || e.key === 'Enter')) return;
 
@@ -1635,6 +1828,10 @@ window.DECKS.b1u1 = {
       else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
       else if (e.key === 'Home') { e.preventDefault(); jumpTo(1); }
       else if (e.key === 'End') { e.preventDefault(); jumpTo(list.length); }
+      else if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        if ($('toc').hidden) openToc(); else closeToc();
+      }
     });
 
     // 首次交互：解锁 iOS 语音，同时预热语音引擎，让第一次朗读不用干等
@@ -1675,7 +1872,6 @@ if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
 }
 </script></body>
 </html>
-
 
 
 
