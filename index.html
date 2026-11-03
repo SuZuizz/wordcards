@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="单词闪卡" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<script src="audio-index.js" defer></script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%230d1017'/%3E%3Crect x='9' y='8' width='38' height='48' rx='9' fill='%23182231' stroke='%235eead4' stroke-width='3'/%3E%3Ctext x='28' y='42' font-size='26' font-family='system-ui,sans-serif' font-weight='700' text-anchor='middle' fill='%235eead4'%3E%E8%AF%8D%3C/text%3E%3Crect x='38' y='38' width='18' height='18' rx='9' fill='%235eead4'/%3E%3C/svg%3E" />
 <title>单词闪卡 · 朗读版</title>
 <style>
@@ -444,7 +445,7 @@
 <div class="overlay" id="settings" hidden>
   <div class="sheet">
     <h3>设置</h3>
-    <p class="sub">语音来自系统 / 浏览器自带的 TTS，不联网也能用（Edge 的 Natural 语音最好听）。</p>
+    <p class="sub">默认用在线词典发音（好听、各手机一致）；断网或失败时自动退回手机自带语音。</p>
 
     <div class="row">
       <label for="deckSel">词库</label>
@@ -466,6 +467,10 @@
     <div class="row">
       <label for="tone">两遍用不同语调（第 1 遍升、第 2 遍降）</label>
       <span class="switch"><input type="checkbox" id="tone" /><i></i></span>
+    </div>
+    <div class="row">
+      <label for="onlineAudio">优先在线词典发音（更好听，需联网）</label>
+      <span class="switch"><input type="checkbox" id="onlineAudio" /><i></i></span>
     </div>
     <div class="row">
       <label for="preferLocal">优先本地语音（开口更快，音色普通）</label>
@@ -495,7 +500,7 @@
       进度保存在本机浏览器（localStorage），换设备 / 清缓存会丢。
     </p>
     <p class="tip" style="border-top:0;padding-top:0;margin-top:6px;color:#4d586b">
-      版本 v4 · 2026-11-03 · 词库 304 张
+      版本 v7 · 2026-11-03 · 词库 304 张
     </p>
     <div class="actions" style="margin-top:14px">
       <button class="btn primary wide" id="btnCloseSettings">完成</button>
@@ -898,7 +903,7 @@ window.DECKS.b1u1 = {
     { w:'humble',    p:'/ˈhʌmbl/',      pos:'adj.', cn:'谦逊的；卑微的',    ex:'Despite his fame, he remained humble.' }
   ];
 
-  var DEFAULT_SETTINGS = { voiceURI: '', rate: 0.85, autoWord: true, preferLocal: true, gap: 1.2, repeat: 2, playAll: true, repeatGap: 0.3, tone: true };
+  var DEFAULT_SETTINGS = { voiceURI: '', rate: 0.85, autoWord: true, preferLocal: true, gap: 1.2, repeat: 2, playAll: true, repeatGap: 0.3, tone: true, onlineAudio: true };
 
   /* ------------- 词库注册表 ------------- */
   var DECKS = {};
@@ -1091,16 +1096,186 @@ window.DECKS.b1u1 = {
     } catch (e) { /* ignore */ }
   }
 
+  /* ---- 离线语音包（audio.bin + audio-index.js，Aria 神经网络音色） ---- */
+  var binBuf = null;
+  var localEl = {};
+
+  function fetchClip(off, len) {
+    if (binBuf) return Promise.resolve(binBuf.slice(off, off + len));
+    if (typeof fetch !== 'function') return Promise.reject(new Error('no fetch'));
+    return fetch('audio.bin', { headers: { Range: 'bytes=' + off + '-' + (off + len - 1) } })
+      .then(function (r) {
+        if (r.status === 206) return r.arrayBuffer();
+        if (!r.ok) throw new Error('bad status');
+        return r.arrayBuffer().then(function (b) {
+          binBuf = b;
+          return b.slice(off, off + len);
+        });
+      });
+  }
+
+  function playEl(el, done) {
+    var fin = false;
+    var wd = setTimeout(function () { if (!fin) { fin = true; done('played'); } }, 8000);
+    function d(r) {
+      if (fin) return;
+      fin = true;
+      clearTimeout(wd);
+      done(r);
+    }
+    el.onended = function () { d('played'); };
+    el.onerror = function () { d('failed'); };
+    try { el.currentTime = 0; } catch (e) {}
+    var p = el.play();
+    if (p && p.catch) p.catch(function () { d('failed'); });
+  }
+
+  // variant: 0 = 陈述（降调） 1 = 疑问（升调）
+  function tryLocal(text, variant, onResult) {
+    var key = toSpeech(String(text || '')).trim().toLowerCase().replace(/[.?!]+$/, '');
+    var idx = (window.AUDIO_INDEX || {})[key];
+    if (!idx) { onResult('failed'); return; }
+
+    var ck = key + '#' + variant;
+    if (localEl[ck]) { playEl(localEl[ck], onResult); return; }
+
+    var off = variant ? idx[2] : idx[0];
+    var len = variant ? idx[3] : idx[1];
+    if (!len) { onResult('failed'); return; }
+
+    fetchClip(off, len).then(function (buf) {
+      var url = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }));
+      var a = new Audio(url);
+      localEl[ck] = a;
+      playEl(a, onResult);
+    }).catch(function () { onResult('failed'); });
+  }
+
+  /* ---- 在线词典发音（有道真人/百度合成），比手机自带 TTS 好听得多 ---- */
+  var currentAudio = null;
+  var clipFail = {};
+  var clipCache = {};   // 播过一次的音频元素缓存起来，第二遍直接重播，不用再等网络
+  var clipKeys = [];
+
+  function stopAudio() {
+    if (!currentAudio) return;
+    try { currentAudio.pause(); } catch (e) {}
+    currentAudio = null;
+  }
+
+  function rememberClip(key, el) {
+    if (clipCache[key]) return;
+    clipCache[key] = el;
+    clipKeys.push(key);
+    while (clipKeys.length > 80) {
+      var k = clipKeys.shift();
+      var old = clipCache[k];
+      if (old) { try { old.pause(); old.removeAttribute('src'); old.load(); } catch (e) {} }
+      delete clipCache[k];
+    }
+  }
+
+  // 重播缓存里的音频：立即开始，没有网络等待
+  function playCached(el, key, done) {
+    var fin = false;
+    var wd = setTimeout(function () { if (!fin) { fin = true; done('played'); } }, 4000);
+    function d(r) {
+      if (fin) return;
+      fin = true;
+      clearTimeout(wd);
+      done(r);
+    }
+    el.onended = function () { d('played'); };
+    el.onerror = function () { delete clipCache[key]; d('failed'); };
+    try { el.currentTime = 0; } catch (e) {}
+    var p = el.play();
+    if (p && p.catch) p.catch(function () { delete clipCache[key]; d('failed'); });
+  }
+
+  function audioUrls(t) {
+    var urls = [];
+    if (/^[A-Za-z][A-Za-z'’\-]*$/.test(t)) {
+      urls.push('https://dict.youdao.com/dictvoice?audio=' + encodeURIComponent(t) + '&type=2');
+    }
+    urls.push('https://fanyi.baidu.com/gettts?lan=en&text=' + encodeURIComponent(t) + '&spd=3&source=web');
+    return urls;
+  }
+
+  // onResult('played' | 'failed')；'played' 是在播完之后回调
+  function tryOnline(text, onResult) {
+    var t = toSpeech(String(text || '')).trim();
+    var key = t.toLowerCase();
+    if (!t || !state.settings.onlineAudio || clipFail[key]) { onResult('failed'); return; }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) { onResult('failed'); return; }
+
+    var finished = false, timer = null;
+    function done(res) {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      if (res === 'failed') clipFail[key] = 1;
+      onResult(res);
+    }
+
+    // 已经播过 → 直接重播，间隔就是设置的那个值
+    var hit = clipCache[key];
+    if (hit) {
+      currentAudio = hit;
+      playCached(hit, key, done);
+      return;
+    }
+
+    var urls = audioUrls(t);
+    var idx = 0, a = null;
+
+    function next() {
+      if (finished) return;
+      if (idx >= urls.length) { done('failed'); return; }
+      if (a) { try { a.pause(); } catch (e) {} }
+      a = new Audio(urls[idx++]);
+      currentAudio = a;
+      a.onplaying = function () { rememberClip(key, a); };
+      a.onended = function () { done('played'); };
+      a.onerror = function () { next(); };
+      var p = a.play();
+      if (p && p.catch) p.catch(function () { next(); });
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        if (finished) return;
+        if (a && a.currentTime > 0.2) { rememberClip(key, a); done('played'); return; }
+        next();
+      }, 4000);
+    }
+
+    next();
+  }
+  /* ---------------------------------------------------------------- */
+
   function speak(text) {
     if (!text) return;
+    try {
+      if ('speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
+      stopAudio();
+    } catch (e) {}
+
+    if (!state.settings.onlineAudio) { speakTTS(text); return; }
+
+    tryLocal(text, 0, function (r) {
+      if (r === 'played') return;
+      tryOnline(text, function (r2) {
+        if (r2 === 'played') return;
+        speakTTS(text);
+      });
+    });
+  }
+
+  function speakTTS(text) {
     if (!('speechSynthesis' in window)) { toast('这个浏览器不支持朗读，请用 Chrome / Edge / Safari'); return; }
     armSpeakWatch();
     try {
-      // 没有声音在播时不要 cancel，省掉一次队列重置的等待
       if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
       var rate = Number(state.settings.rate) || 0.85;
       speechSynthesis.speak(makeUtterance(text, resolveVoice(), rate, true));
-      // Chrome 偶尔会停在 paused 状态，补一刀
       if (speechSynthesis.paused) speechSynthesis.resume();
     } catch (e) { console.warn(e); }
   }
@@ -1155,8 +1330,8 @@ window.DECKS.b1u1 = {
     auto.watch = null;
   }
 
-  // 读完触发回调；浏览器不保证 onend 时用看门狗兜底
-  function speakWithEnd(text, cb, pitch) {
+  // 读完触发回调；顺序：离线语音包 → 在线词典 → 浏览器 TTS
+  function speakWithEnd(text, cb, pitch, variant) {
     var done = false;
     function finish() {
       if (done) return;
@@ -1164,25 +1339,49 @@ window.DECKS.b1u1 = {
       clearTimeout(auto.watch);
       cb();
     }
-    if (!('speechSynthesis' in window)) {
-      auto.wait = setTimeout(finish, Math.max(900, text.length * 55));
-      return;
-    }
-    armSpeakWatch();
+
     try {
-      if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
-      var u = makeUtterance(text, resolveVoice(), Number(state.settings.rate) || 0.85, false, pitch);
-      u.onend = finish;
-      u.onerror = function () { auto.watch = setTimeout(finish, 400); };
-      speechSynthesis.speak(u);
-      if (speechSynthesis.paused) speechSynthesis.resume();
-      auto.watch = setTimeout(finish, Math.max(4000, text.length * 240));
-    } catch (e) {
-      auto.wait = setTimeout(finish, 1200);
+      if ('speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
+      stopAudio();
+    } catch (e) {}
+
+    function speakByTTS() {
+      if (done) return;
+      if (!('speechSynthesis' in window)) {
+        auto.wait = setTimeout(finish, Math.max(900, text.length * 55));
+        return;
+      }
+      armSpeakWatch();
+      try {
+        var u = makeUtterance(text, resolveVoice(), Number(state.settings.rate) || 0.85, false, pitch);
+        u.onend = finish;
+        u.onerror = function () { auto.watch = setTimeout(finish, 400); };
+        speechSynthesis.speak(u);
+        if (speechSynthesis.paused) speechSynthesis.resume();
+        auto.watch = setTimeout(finish, Math.max(4000, text.length * 240));
+      } catch (e) {
+        auto.wait = setTimeout(finish, 1200);
+      }
     }
+
+    function byOnline() {
+      tryOnline(text, function (r) {
+        if (done) return;
+        if (r === 'played') { finish(); return; }
+        speakByTTS();
+      });
+    }
+
+    if (!state.settings.onlineAudio) { speakByTTS(); return; }
+
+    tryLocal(text, variant ? 1 : 0, function (r) {
+      if (done) return;
+      if (r === 'played') { finish(); return; }
+      byOnline();
+    });
   }
 
-  // 把同一段话读 n 遍；开了「升/降调」时，第 1 遍升（问句语调）、第 2 遍降（陈述语调）
+  // 把同一段话读 n 遍；开了「升/降调」时，第 1 遍升（疑问语调）、第 2 遍降（陈述语调）
   function speakTimes(token, text, times, cb) {
     var total = Math.max(1, times);
     var remaining = total;
@@ -1191,17 +1390,18 @@ window.DECKS.b1u1 = {
       var index = total - remaining;
       var say = text;
       var pitch = 1;
+      var variant = 0;
       if (state.settings.tone && total > 1) {
         var base = String(text).replace(/[\s.?!。！？]+$/, '');
-        if (index % 2 === 0) { say = base + '?'; pitch = 1.2; }   // 升调
-        else { say = base + '.'; pitch = 0.82; }                  // 降调
+        if (index % 2 === 0) { say = base + '?'; pitch = 1.2; variant = 1; }  // 升调
+        else { say = base + '.'; pitch = 0.82; variant = 0; }                 // 降调
       }
       speakWithEnd(say, function () {
         if (!auto.on || token !== auto.token) return;
         remaining--;
         if (remaining > 0) auto.wait = setTimeout(once, repeatGapMs());
         else cb();
-      }, pitch);
+      }, pitch, variant);
     }
     once();
   }
@@ -1745,6 +1945,7 @@ window.DECKS.b1u1 = {
     $('rateVal').textContent = formatRate(state.settings.rate);
     $('autoWord').checked = !!state.settings.autoWord;
     $('tone').checked = !!state.settings.tone;
+    $('onlineAudio').checked = !!state.settings.onlineAudio;
     $('preferLocal').checked = !!state.settings.preferLocal;
     fillDeckSelect();
     refreshVoices();
@@ -1885,6 +2086,13 @@ window.DECKS.b1u1 = {
       save();
       toast(this.checked ? '优先本地语音：开口更快' : '自动挑选音色（云端语音可能慢一点）');
     });
+    $('onlineAudio').addEventListener('change', function () {
+      state.settings.onlineAudio = this.checked;
+      clipFail = {};
+      save();
+      toast(this.checked ? '优先用在线词典发音' : '改用手机自带语音合成');
+      if (this.checked) speak(currentCard() ? currentCard().w : 'hello');
+    });
     $('rate').addEventListener('input', function () {
       state.settings.rate = Number(this.value);
       $('rateVal').textContent = formatRate(this.value);
@@ -1996,6 +2204,8 @@ if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
 }
 </script></body>
 </html>
+
+
 
 
 
