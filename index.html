@@ -162,6 +162,7 @@
     font-family:inherit;background:#1b2230;border:1px solid #2a3547;border-bottom-width:2px;
     border-radius:5px;padding:1px 5px;font-size:10.5px;color:#9aa7bd;
   }
+  .src-tag{color:#4d586b;font-size:10.5px}
   .mini{
     all:unset;cursor:pointer;display:inline-block;margin-right:10px;
     padding:3px 9px;border-radius:99px;font-size:11.5px;
@@ -247,9 +248,10 @@
   select:focus,textarea:focus{border-color:#3a4a66}
   input[type="range"]{padding:0;height:24px;accent-color:#5eead4;background:transparent;border:0;max-width:170px}
   .switch{position:relative;width:44px;height:25px;flex:none;cursor:pointer}
-  .switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+  .switch input{position:absolute;inset:0;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:2}
   .switch i{
     position:absolute;inset:0;border-radius:99px;background:#2a3446;transition:.2s;
+    pointer-events:none;   /* 让点击落到下面的 input 上，开关才点得动 */
   }
   .switch i::after{
     content:"";position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;
@@ -469,7 +471,7 @@
       <span class="switch"><input type="checkbox" id="tone" /><i></i></span>
     </div>
     <div class="row">
-      <label for="onlineAudio">优先在线词典发音（更好听，需联网）</label>
+      <label for="onlineAudio">优先词典发音（离线语音包 / 在线，比系统语音好听）</label>
       <span class="switch"><input type="checkbox" id="onlineAudio" /><i></i></span>
     </div>
     <div class="row">
@@ -480,6 +482,7 @@
       <label>试听</label>
       <button class="btn" id="btnTestVoice" style="padding:7px 14px">🔊 试一下</button>
     </div>
+    <pre id="playLogBox" style="margin:6px 0 0;padding:8px 10px;border-radius:9px;background:#0c1219;border:1px solid #1b2330;color:#6b7a90;font:11px/1.6 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all"></pre>
 
     <div class="field">
       <span>导入自己的词库（每行一个：单词 | 音标 | 词性+释义 | 例句，后三项可省略）</span>
@@ -496,11 +499,11 @@
     <p class="tip">
       快捷键：空格 / Enter 重读单词 · 1 / 2 / 3 评分 · R 重读 · P 自动播放 · Esc 停止 / 关闭设置。<br>
       自动播放：「遍数」读 1–3 遍，「重复」是两遍之间的间隔，「停顿」是读完到下一张的间隔；范围可选「本轮」或「全部词库」。<br>
-      云端音色（名字带 Natural / Online）首句会慢 0.5–1 秒；想秒开就勾选上方「优先本地语音」。<br>
+      语音来自离线语音包（Aria 神经音色）；包缺失时依次退回在线词典、手机自带语音。<br>
       进度保存在本机浏览器（localStorage），换设备 / 清缓存会丢。
     </p>
     <p class="tip" style="border-top:0;padding-top:0;margin-top:6px;color:#4d586b">
-      版本 v8 · 2026-11-03 · 词库 304 张
+      版本 v17 · 2026-11-04 · 词库 304 张
     </p>
     <div class="actions" style="margin-top:14px">
       <button class="btn primary wide" id="btnCloseSettings">完成</button>
@@ -849,6 +852,7 @@ window.DECKS.b1u1 = {
 
 
 </script>
+<script src="decks-affix.js"></script>
 <script>
 (function () {
   'use strict';
@@ -1112,22 +1116,55 @@ window.DECKS.b1u1 = {
     el.onended = function () { d('played'); };
     el.onerror = function () { d('failed'); };
     try { el.currentTime = 0; } catch (e) {}
+    try { el.playbackRate = clipRate(); } catch (e) {}
     var p = el.play();
     if (p && p.catch) p.catch(function () { d('failed'); });
+  }
+
+  // 让「语速」对音频片段也生效（浏览器会保持音调不变）
+  function clipRate() {
+    var r = Number(state.settings.rate);
+    if (!isFinite(r) || r <= 0) r = 0.85;
+    return Math.max(0.5, Math.min(1.5, r));
+  }
+
+  // 播放诊断：记录最近几次用的是哪个音源，方便排查
+  var playLog = [];
+  function logPlay(kind, key, note) {
+    playLog.push(kind + '  ←  ' + key + (note ? '  (' + note + ')' : ''));
+    if (playLog.length > 8) playLog.shift();
+  }
+
+  // 语音包的 key 是生成时按 Python 规则算的，和浏览器这边的清理略有差异（空格、句尾标点），
+  // 这里建一张别名表把两边对齐，避免短语莫名其妙没命中
+  var audioAlias = null;
+  function audioIndexOf(key) {
+    var raw = window.AUDIO_INDEX;
+    if (!raw) return null;              // 索引还没加载完：按未命中处理，但别把空表缓存下来
+    if (audioAlias === null) {
+      audioAlias = {};
+      for (var k in raw) {
+        if (!raw.hasOwnProperty(k)) continue;
+        var a = k.replace(/\s+([,.;:!?)])/g, '$1').replace(/\(\s+/g, '(').replace(/[.?!]+$/, '').trim().toLowerCase();
+        if (a && !audioAlias[a]) audioAlias[a] = raw[k];
+      }
+    }
+    return raw[key] || audioAlias[key] || null;
   }
 
   // variant: 0 = 陈述（降调） 1 = 疑问（升调）
   function tryLocal(text, variant, onResult) {
     var key = toSpeech(String(text || '')).trim().toLowerCase().replace(/[.?!]+$/, '');
-    var idx = (window.AUDIO_INDEX || {})[key];
-    if (!idx) { onResult('failed'); return; }
+    var idx = audioIndexOf(key);
+    if (!idx) { logPlay('未命中语音包', key); onResult('failed'); return; }
 
     var ck = key + '#' + variant;
     if (localEl[ck]) { playEl(localEl[ck], onResult); return; }
 
     var off = variant ? idx[2] : idx[0];
     var len = variant ? idx[3] : idx[1];
-    if (!len) { onResult('failed'); return; }
+    if (!len) { logPlay('语音包缺该变体', key); onResult('failed'); return; }
+    logPlay('语音包', key, 'v' + variant);
 
     fetchClip(off, len).then(function (buf) {
       var url = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }));
@@ -1220,9 +1257,11 @@ window.DECKS.b1u1 = {
       if (a) { try { a.pause(); } catch (e) {} }
       a = new Audio(urls[idx++]);
       currentAudio = a;
+      logPlay('在线', t, idx === 1 ? '有道' : '百度');
       a.onplaying = function () { rememberClip(key, a); };
       a.onended = function () { done('played'); };
       a.onerror = function () { next(); };
+      try { a.playbackRate = clipRate(); } catch (e) {}
       var p = a.play();
       if (p && p.catch) p.catch(function () { next(); });
       clearTimeout(timer);
@@ -1258,6 +1297,7 @@ window.DECKS.b1u1 = {
   function speakTTS(text) {
     if (!('speechSynthesis' in window)) { toast('这个浏览器不支持朗读，请用 Chrome / Edge / Safari'); return; }
     armSpeakWatch();
+    logPlay('系统语音', String(text || '').slice(0, 40));
     try {
       if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
       var rate = Number(state.settings.rate) || 0.85;
@@ -1482,8 +1522,7 @@ window.DECKS.b1u1 = {
     $('donePanel').hidden = true;
     $('cardWrap').hidden = false;
     $('controls').hidden = false;
-    $('pager').hidden = false;
-    $('jumpNo').max = list.length;
+    $('pager').hidden = false;    $('jumpNo').max = list.length;
     $('jumpNo').value = pos + 1;
     $('pgTotal').textContent = list.length;
     $('btnPrev').disabled = pos <= 0;
@@ -1581,6 +1620,8 @@ window.DECKS.b1u1 = {
     return /[A-Z]/.test(ch) ? ch : '#';
   }
 
+  var TOC_MAX = 400;   // 一次最多渲染这么多条，大词库也不卡
+
   function renderToc() {
     var q = ($('tocSearch').value || '').trim().toLowerCase();
     var all = tocSorted();
@@ -1588,6 +1629,9 @@ window.DECKS.b1u1 = {
       if (!q) return true;
       return (c.w + ' ' + (c.cn || '') + ' ' + (c.ex || '')).toLowerCase().indexOf(q) >= 0;
     });
+    var shownAll = shown;
+    var truncated = shown.length > TOC_MAX;
+    if (truncated) shown = shown.slice(0, TOC_MAX);
 
     var box = $('tocList');
     var strip = $('tocLetters');
@@ -1644,7 +1688,14 @@ window.DECKS.b1u1 = {
       box.appendChild(b);
     });
 
-    $('tocCount').textContent = q ? (shown.length + ' / ' + all.length) : (all.length + ' 张');
+    if (truncated) {
+      var more = document.createElement('div');
+      more.className = 'toc-empty';
+      more.textContent = '只显示前 ' + TOC_MAX + ' 条，共 ' + shownAll.length + ' 条——输入关键词缩小范围';
+      box.appendChild(more);
+    }
+
+    $('tocCount').textContent = q ? (shownAll.length + ' / ' + all.length) : (all.length + ' 张');
   }
 
   function openToc() {
@@ -1919,6 +1970,9 @@ window.DECKS.b1u1 = {
     $('tone').checked = !!state.settings.tone;
     $('onlineAudio').checked = !!state.settings.onlineAudio;
     $('preferLocal').checked = !!state.settings.preferLocal;
+    $('playLogBox').textContent = playLog.length
+      ? ('最近播放（音源 ← 卡片）：\n' + playLog.join('\n'))
+      : '（还没有播放记录，先点几张卡再回来）';
     fillDeckSelect();
     refreshVoices();
     warmUp();
@@ -1969,7 +2023,11 @@ window.DECKS.b1u1 = {
     $('warnChrome').addEventListener('click', openInChrome);
     $('btnToc').addEventListener('click', openToc);
     $('tocClose').addEventListener('click', closeToc);
-    $('tocSearch').addEventListener('input', renderToc);
+    var tocTimer = null;
+    $('tocSearch').addEventListener('input', function () {
+      clearTimeout(tocTimer);
+      tocTimer = setTimeout(renderToc, 140);
+    });
     $('tocSearch').addEventListener('keydown', function (e) {
       if (e.key === 'Escape') { e.preventDefault(); closeToc(); }
       if (e.key === 'Enter') {
@@ -2052,7 +2110,7 @@ window.DECKS.b1u1 = {
       voiceCache = null;
       warmUp();
       save();
-      toast(this.checked ? '优先本地语音：开口更快' : '自动挑选音色（云端语音可能慢一点）');
+      toast(this.checked ? '兜底语音优先用本机' : '兜底语音自动挑选');
     });
     $('onlineAudio').addEventListener('change', function () {
       state.settings.onlineAudio = this.checked;
@@ -2172,6 +2230,16 @@ if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
 }
 </script></body>
 </html>
+
+
+
+
+
+
+
+
+
+
 
 
 
