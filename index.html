@@ -295,6 +295,7 @@
     color:#79b3a8;background:#101a24;border:1px solid #1c2431;transition:.14s;
   }
   .toc-letters button:hover{color:#c8fff5;border-color:#2c5a52;background:#122120}
+  .toc-letters button.on{background:#1f6f63;color:#eafffb;border-color:#2f8878}
   .toc-list{
     overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start;
     padding-right:6px;scrollbar-width:thin;scrollbar-color:#2a3547 transparent;
@@ -507,7 +508,7 @@
       进度保存在本机浏览器（localStorage），换设备 / 清缓存会丢。
     </p>
     <p class="tip" style="border-top:0;padding-top:0;margin-top:6px;color:#4d586b">
-      版本 v18 · 2026-11-04 · 词库 304 张
+      版本 v19 · 2026-11-04 · 词库 304 张
     </p>
     <div class="actions" style="margin-top:14px">
       <button class="btn primary wide" id="btnCloseSettings">完成</button>
@@ -1637,17 +1638,20 @@ window.DECKS.b1u1 = {
     return /[A-Z]/.test(ch) ? ch : '#';
   }
 
-  var TOC_MAX = 400;   // 一次最多渲染这么多条，大词库也不卡
+  var TOC_MAX = 400;   // 未选字母时，一次最多渲染这么多条
+  var tocLetter = '';  // 当前选中的首字母（空 = 全部）
 
   function renderToc() {
     var q = ($('tocSearch').value || '').trim().toLowerCase();
     var all = tocSorted();
     var shown = all.filter(function (c) {
+      if (tocLetter && tocKey(c.w) !== tocLetter) return false;
       if (!q) return true;
       return (c.w + ' ' + (c.cn || '') + ' ' + (c.ex || '')).toLowerCase().indexOf(q) >= 0;
     });
     var shownAll = shown;
-    var truncated = shown.length > TOC_MAX;
+    // 选了字母就整列显示（一个字母最多几百条），没选字母才限流
+    var truncated = !tocLetter && shown.length > TOC_MAX;
     if (truncated) shown = shown.slice(0, TOC_MAX);
 
     var box = $('tocList');
@@ -1656,18 +1660,20 @@ window.DECKS.b1u1 = {
     box.innerHTML = '';
     strip.innerHTML = '';
 
-    // 字母导航
+    // 字母筛选：点一下只看这个字母，再点一下取消
     var keys = [];
-    shown.forEach(function (c) {
+    all.forEach(function (c) {
       var k = tocKey(c.w);
       if (keys.indexOf(k) < 0) keys.push(k);
     });
     keys.forEach(function (k) {
       var lb = document.createElement('button');
       lb.textContent = k;
+      if (k === tocLetter) lb.className = 'on';
       lb.addEventListener('click', function () {
-        var target = box.querySelector('[data-letter="' + k + '"]');
-        if (target && target.scrollIntoView) target.scrollIntoView({ block: 'start' });
+        tocLetter = (tocLetter === k) ? '' : k;
+        renderToc();
+        if (box.scrollTop) box.scrollTop = 0;
       });
       strip.appendChild(lb);
     });
@@ -1675,14 +1681,14 @@ window.DECKS.b1u1 = {
     if (!shown.length) {
       var empty = document.createElement('div');
       empty.className = 'toc-empty';
-      empty.textContent = '没有匹配「' + q + '」的词条';
+      empty.textContent = q ? ('没有匹配「' + q + '」的词条') : '这个词库没有以该字母开头的词';
       box.appendChild(empty);
     }
 
     var last = null;
     shown.forEach(function (c) {
       var k = tocKey(c.w);
-      if (k !== last) {
+      if (k !== last && !tocLetter) {
         var h = document.createElement('div');
         h.className = 'toc-group-h';
         h.setAttribute('data-letter', k);
@@ -1708,16 +1714,20 @@ window.DECKS.b1u1 = {
     if (truncated) {
       var more = document.createElement('div');
       more.className = 'toc-empty';
-      more.textContent = '只显示前 ' + TOC_MAX + ' 条，共 ' + shownAll.length + ' 条——输入关键词缩小范围';
+      more.textContent = '只显示前 ' + TOC_MAX + ' 条（共 ' + shownAll.length + ' 条）——点上面的字母看全部，或输入关键词';
       box.appendChild(more);
     }
 
-    $('tocCount').textContent = q ? (shownAll.length + ' / ' + all.length) : (all.length + ' 张');
+    var head = tocLetter ? (tocLetter + ' · ') : '';
+    $('tocCount').textContent = q
+      ? (shownAll.length + ' / ' + all.length)
+      : (head + shownAll.length + ' / ' + all.length);
   }
 
   function openToc() {
     if (auto.on) autoStop();
     $('tocSearch').value = '';
+    tocLetter = '';
     renderToc();
     $('toc').hidden = false;
     var on = $('tocList').querySelector('.toc-item.on');
