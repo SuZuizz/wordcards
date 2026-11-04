@@ -447,7 +447,7 @@
 <div class="overlay" id="settings" hidden>
   <div class="sheet">
     <h3>设置</h3>
-    <p class="sub">默认用在线词典发音（好听、各手机一致）；断网或失败时自动退回手机自带语音。</p>
+    <p class="sub">默认用离线语音包（Aria 神经音色）；也能切成在线词典或系统语音。选「系统语音」时，上面的「朗读语音」下拉才会生效。</p>
 
     <div class="row">
       <label for="deckSel">词库</label>
@@ -471,11 +471,15 @@
       <span class="switch"><input type="checkbox" id="tone" /><i></i></span>
     </div>
     <div class="row">
-      <label for="onlineAudio">优先词典发音（离线语音包 / 在线，比系统语音好听）</label>
-      <span class="switch"><input type="checkbox" id="onlineAudio" /><i></i></span>
+      <label for="srcSel">发音方式</label>
+      <select id="srcSel" style="max-width:230px">
+        <option value="pack">语音包（最稳，音色固定）</option>
+        <option value="online">在线词典（联网）</option>
+        <option value="tts">系统语音（可选音色）</option>
+      </select>
     </div>
     <div class="row">
-      <label for="preferLocal">优先本地语音（开口更快，音色普通）</label>
+      <label for="preferLocal">系统语音优先用本机引擎（开口更快）</label>
       <span class="switch"><input type="checkbox" id="preferLocal" /><i></i></span>
     </div>
     <div class="row" style="border-bottom:0">
@@ -503,7 +507,7 @@
       进度保存在本机浏览器（localStorage），换设备 / 清缓存会丢。
     </p>
     <p class="tip" style="border-top:0;padding-top:0;margin-top:6px;color:#4d586b">
-      版本 v17 · 2026-11-04 · 词库 304 张
+      版本 v18 · 2026-11-04 · 词库 304 张
     </p>
     <div class="actions" style="margin-top:14px">
       <button class="btn primary wide" id="btnCloseSettings">完成</button>
@@ -893,7 +897,7 @@ window.DECKS.b1u1 = {
     { w:'humble',    p:'/ˈhʌmbl/',      pos:'adj.', cn:'谦逊的；卑微的',    ex:'Despite his fame, he remained humble.' }
   ];
 
-  var DEFAULT_SETTINGS = { voiceURI: '', rate: 0.85, autoWord: true, preferLocal: true, gap: 1.2, repeat: 2, playAll: true, repeatGap: 0.3, tone: true, onlineAudio: true };
+  var DEFAULT_SETTINGS = { voiceURI: '', rate: 0.85, autoWord: true, preferLocal: true, gap: 1.2, repeat: 2, playAll: true, repeatGap: 0.3, tone: true, soundSource: 'pack' };
 
   /* ------------- 词库注册表 ------------- */
   var DECKS = {};
@@ -955,6 +959,12 @@ window.DECKS.b1u1 = {
       settings: Object.assign({}, DEFAULT_SETTINGS, (raw && raw.settings) || {}),
       stats: stats
     };
+
+    // 旧版只有 onlineAudio 开关，这里迁移成三选一的 soundSource
+    var savedSettings = (raw && raw.settings) || {};
+    if (!savedSettings.soundSource && savedSettings.onlineAudio === false) {
+      state.settings.soundSource = 'tts';
+    }
   }
 
   var storageOK = true;
@@ -1228,7 +1238,7 @@ window.DECKS.b1u1 = {
   function tryOnline(text, onResult) {
     var t = toSpeech(String(text || '')).trim();
     var key = t.toLowerCase();
-    if (!t || !state.settings.onlineAudio || clipFail[key]) { onResult('failed'); return; }
+    if (!t || clipFail[key]) { onResult('failed'); return; }
     if (typeof navigator !== 'undefined' && navigator.onLine === false) { onResult('failed'); return; }
 
     var finished = false, timer = null;
@@ -1283,7 +1293,12 @@ window.DECKS.b1u1 = {
       stopAudio();
     } catch (e) {}
 
-    if (!state.settings.onlineAudio) { speakTTS(text); return; }
+    var src = state.settings.soundSource || 'pack';
+    if (src === 'tts') { speakTTS(text); return; }
+    if (src === 'online') {
+      tryOnline(text, function (r) { if (r !== 'played') speakTTS(text); });
+      return;
+    }
 
     tryLocal(text, 0, function (r) {
       if (r === 'played') return;
@@ -1399,7 +1414,9 @@ window.DECKS.b1u1 = {
       });
     }
 
-    if (!state.settings.onlineAudio) { speakByTTS(); return; }
+    var src = state.settings.soundSource || 'pack';
+    if (src === 'tts') { speakByTTS(); return; }
+    if (src === 'online') { byOnline(); return; }
 
     tryLocal(text, variant ? 1 : 0, function (r) {
       if (done) return;
@@ -1968,7 +1985,7 @@ window.DECKS.b1u1 = {
     $('rateVal').textContent = formatRate(state.settings.rate);
     $('autoWord').checked = !!state.settings.autoWord;
     $('tone').checked = !!state.settings.tone;
-    $('onlineAudio').checked = !!state.settings.onlineAudio;
+    $('srcSel').value = state.settings.soundSource || 'pack';
     $('preferLocal').checked = !!state.settings.preferLocal;
     $('playLogBox').textContent = playLog.length
       ? ('最近播放（音源 ← 卡片）：\n' + playLog.join('\n'))
@@ -2112,12 +2129,13 @@ window.DECKS.b1u1 = {
       save();
       toast(this.checked ? '兜底语音优先用本机' : '兜底语音自动挑选');
     });
-    $('onlineAudio').addEventListener('change', function () {
-      state.settings.onlineAudio = this.checked;
+    $('srcSel').addEventListener('change', function () {
+      state.settings.soundSource = this.value;
       clipFail = {};
       save();
-      toast(this.checked ? '优先用在线词典发音' : '改用手机自带语音合成');
-      if (this.checked) speak(currentCard() ? currentCard().w : 'hello');
+      var names = { pack: '语音包（Aria）', online: '在线词典', tts: '系统语音' };
+      toast('发音方式：' + (names[this.value] || this.value));
+      speak(currentCard() ? currentCard().w : 'hello');
     });
     $('rate').addEventListener('input', function () {
       state.settings.rate = Number(this.value);
@@ -2230,6 +2248,7 @@ if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
 }
 </script></body>
 </html>
+
 
 
 
