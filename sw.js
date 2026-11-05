@@ -1,6 +1,6 @@
 /* 单词闪卡 PWA Service Worker
    页面导航用「网络优先」（更新能立刻生效），静态资源用「缓存优先」（离线可用） */
-var CACHE = 'wordfc-v2';
+var CACHE = 'wordfc-v3';
 var ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function (e) {
